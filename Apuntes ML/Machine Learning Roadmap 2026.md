@@ -22,11 +22,11 @@
 
 ### Cálculo
 
-- Derivadas, derivadas parciales
+- Derivadas ✅ [[Derivadas, derivadas parciales#Derivadas]], derivadas parciales  ✅ [[Derivadas, derivadas parciales#Derivadas parciales]]
     
-- Regla de la cadena
+- Regla de la cadena ✅ [[Regla de la cadena]]
     
-- Gradiente, Jacobiano, Hessiano
+- Gradiente ✅ [[Gradiente, Jacobiano, Hessiano]], Jacobiano ✅ [[Gradiente, Jacobiano, Hessiano#Definición Jacobiana]], Hessiano ✅ [[Gradiente, Jacobiano, Hessiano#Hessianas]]
     
 
 ### Estadística y Probabilidad
@@ -46,11 +46,8 @@
 - Gráficos y tablas
     
 
-### Matemáticas Discretas
 
----
-
-### Librerías esenciales
+## Librerías esenciales
 
 - [[Numpy]]
     
@@ -168,10 +165,6 @@
 - Métodos Actor-Crítico
     
 
-### Aprendizaje Semi-supervisado y Self-supervisado
-
----
-
 ## 📊 Evaluación de Modelos
 
 - Train-Test split
@@ -228,7 +221,7 @@
 ### Arquitecturas
 
 - [[Redes Neuronales Convolucionales (CNN)]]
-	-  Convolución
+	- Convolución
         
     - Padding
         
@@ -264,7 +257,6 @@
 - Autoencoders
     
 - Redes Generativas Adversarias (GANs)
-    
 
 ---
 
@@ -300,7 +292,7 @@
 - Modelos de atención
     
 
-### Otros
+## Otros
 
 - [[Explainable AI (XAI)]]
     
