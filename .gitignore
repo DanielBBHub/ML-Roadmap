@@ -1,0 +1,10 @@
+.venv/
+venv/
+env/
+mlenv312/
+**/.venv/
+**/venv/
+**/env/
+**/mlenv312/
+__pycache__/
+*.pyc
