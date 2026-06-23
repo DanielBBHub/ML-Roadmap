@@ -1,6 +1,5 @@
 # Resumen de apuntes: Fundamentos de PyTorch
 
-Este documento resume el contenido de los archivos dentro de `ApuntesML/Practica/NN_DL/Pytroch_Fund`.
 
 ## 1) `Pytorch_Tensors.py`
 
