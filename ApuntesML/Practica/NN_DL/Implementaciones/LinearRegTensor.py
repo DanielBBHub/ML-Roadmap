@@ -1,9 +1,12 @@
-# Implementacion de un modelo de regresión lineal utilizando tensores y autograd, asi como la API de alto nivel de PyTorch y la aceleración por HW
+## IMPLEMENTING A REGRESSION MLP WITH TENSORS
 import torch
 # Import del dataset de info de inmuebles de california
 from sklearn.datasets import fetch_california_housing
 # Import de la función de separado de conjuntos de entrenamiento/test
 from sklearn.model_selection import train_test_split
+
+from ModelUtl.Train import train_test_val
+
 
 housing = fetch_california_housing()
 # train is now 75% of the entire data set

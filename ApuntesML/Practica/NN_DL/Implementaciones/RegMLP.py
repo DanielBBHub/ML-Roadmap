@@ -1,9 +1,11 @@
+## IMPLEMENTING A REGRESSION MLP WITH HIGH LVL API
+
 import torch
 import torch.nn as nn
 from sklearn.datasets import fetch_california_housing
 housing = fetch_california_housing()
 from LinearRegAPI import train_bgd
-from train_test_val import train_test_val
+from ModelUtl.Train import train_test_val
 
 x_train, x_test, x_val, y_train, y_test, y_val = train_test_val(housing.data, housing.target)
 

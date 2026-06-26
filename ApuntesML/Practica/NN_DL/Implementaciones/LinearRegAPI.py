@@ -1,9 +1,10 @@
+## IMPLEMENTING LINEAR REGRESSION
+
 import torch.nn as nn
 import torch
 # Import del dataset de info de inmuebles de california
 from sklearn.datasets import fetch_california_housing
-
-from train_test_val import train_test_val
+from ModelUtl.Train import train_bgd, train_test_val
 
 housing = fetch_california_housing()
 
@@ -38,24 +39,6 @@ learning_rate = 0.4
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 # La clase MSELoss tambien es un modulo, asi que dandole las predicciones y las etiquetas calculara el error
 mse = nn.MSELoss()
-
-# El bucle de entrenamiento es igual, pero ahora ya no se trabaja con tensores y autograd directamente,
-# si no que los modulos se encargan de hacer ese trabajo.
-# Este y el metodo utilizando los tensores, esta calculando "batch gradient descent", es decir, esta calculando
-# los gradientes para todo el conjunto de entrenamiento en cada iteración. Si el dataset es pequeño, se puede 
-# permitir, pero tiene un problema grande con el escalado
-def train_bgd(model, optimizer, criterion, X_train, y_train, n_epochs):
-    for epoch in range(n_epochs):
-        y_pred = model(X_train)
-        # Calculo de la perdida con el modulo recibido
-        loss = criterion(y_pred, y_train)
-        # Calculo de gradiente de pesos y escalar
-        loss.backward()
-        # Momento de actualizar pesos y escalar; descenso de gradiente
-        optimizer.step()
-        # Reestablecer valores a 0 para el gradiente
-        optimizer.zero_grad()
-        print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {loss.item()}")
 
 train_bgd(model, optimizer, mse, x_train, y_train, 30)
 

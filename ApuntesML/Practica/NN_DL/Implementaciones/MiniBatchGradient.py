@@ -1,96 +1,20 @@
+## IMPLEMENTING A REGRESSION MLP WITH MINI BATCH GRADIENT DESCENT USING DATA LOADERS
+
 from torch.utils.data import TensorDataset, DataLoader
 import torch
 import torch.nn as nn
 from sklearn.datasets import fetch_california_housing
-from train_test_val import train_test_val
 import multiprocessing as mp
 
-from ModelEval.Eval import evaluate, evaluate_tm
+from ModelUtl.Eval import evaluate, evaluate_tm
 import torchmetrics
+from ModelUtl.Train import train_minibatch_gd, train_test_val
 
 def eval_set (model, dataset, device):
 
     rmse = torchmetrics.MeanSquaredError(squared=False).to(device)
     tm_eval = evaluate_tm(model, dataset, rmse, device)
     print(f"\nEvaluacion del modelo en un TensorDataset con RMSE (metrica implementada con torchmetrics): {tm_eval}")
-
-def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device):
-    early_stopping = [0.05, 0.0, 10.0]
-    last_loss = 0
-    for epoch in range(n_epochs):
-        # Para diferenciar los diferentes modos de un entrenamiento tenemos model.train() y model.eval()
-
-        # model.train(): Activa comportamiento de entrenamiento:
-
-        #     Dropout: apaga neuronas aleatoriamente.
-        #     BatchNorm: usa estadísticas del batch actual y actualiza medias/varianzas internas.
-
-        # Se usa antes del loop de entrenamiento.
-        model.train()
-
-        
-        model.train()
-        # -------- TRAIN --------
-        total_loss = 0.0
-        for X_batch, y_batch in train_loader:           
-
-            # Para mover mas rapido a la GPU los batches, utilizar non_blocking=true para no bloquear el hilo principal
-            X_batch = X_batch.to(device, non_blocking=True)
-            y_batch = y_batch.to(device, non_blocking=True)
-
-
-            y_pred = model(X_batch)
-
-            loss = criterion(y_pred, y_batch)
-            total_loss += loss.item()
-
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            
-
-
-        mean_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {mean_loss:.4f}")
-
-        
-
-        # model.eval(): Activa comportamiento de inferencia/validación:
-
-        #     Dropout: se desactiva.
-        #     BatchNorm: usa estadísticas acumuladas, no las del batch.
-
-        # Se usa para validación/test/inferencia.
-
-        model.eval()
-        eval_set(model, train_loader, device)
-
-        # -------- VALIDATION (end of epoch) --------
-        val_loss = 0.0
-        # El modo eval no desactiva gradientes, hay que seguir explicitando esta restriccion
-        with torch.no_grad():
-            for X_val, y_val in eval_loader:
-                X_val = X_val.to(device, non_blocking=True)
-                y_val = y_val.to(device, non_blocking=True)
-                y_val_pred = model(X_val)
-                vloss = criterion(y_val_pred, y_val)
-                val_loss += vloss.item()
-
-        mean_val_loss = val_loss / len(eval_loader)
-        print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
-
-        eval_set(model, eval_loader, device)
-
-        # Early stopping sobre val_loss
-        if abs(mean_val_loss - last_loss) < early_stopping[0]:
-            if early_stopping[1] >= early_stopping[2]:
-                print(f"Parada por early stopping con pérdida de validación: {mean_val_loss:.4f}")
-                break
-            early_stopping[1] += 1
-        else:
-            last_loss = mean_val_loss
-            early_stopping[1] = 0
-
 
 def main():
     # Comprobacion en tiempo de ejecucion para el soporte de CUDA
