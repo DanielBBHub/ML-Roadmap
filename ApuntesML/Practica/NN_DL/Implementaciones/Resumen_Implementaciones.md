@@ -1,6 +1,5 @@
 # Resumen de apuntes: Implementaciones (NN_DL)
 
-Este documento resume el contenido de los archivos dentro de `ApuntesML/Practica/NN_DL/Implementaciones`.
 
 ## 1) `train_test_val.py`
 
