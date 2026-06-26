@@ -6,15 +6,10 @@ import torch.nn as nn
 from sklearn.datasets import fetch_california_housing
 import multiprocessing as mp
 
-from ModelUtl.Eval import evaluate, evaluate_tm
-import torchmetrics
+
 from ModelUtl.Train import train_minibatch_gd, train_test_val
 
-def eval_set (model, dataset, device):
 
-    rmse = torchmetrics.MeanSquaredError(squared=False).to(device)
-    tm_eval = evaluate_tm(model, dataset, rmse, device)
-    print(f"\nEvaluacion del modelo en un TensorDataset con RMSE (metrica implementada con torchmetrics): {tm_eval}")
 
 def main():
     # Comprobacion en tiempo de ejecucion para el soporte de CUDA

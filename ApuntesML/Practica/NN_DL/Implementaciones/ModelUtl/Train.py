@@ -1,6 +1,14 @@
-import troch
+import torch
+import torchmetrics
+from ModelUtl.Eval import evaluate, evaluate_tm
 # Import de la función de separado de conjuntos de entrenamiento/test
 from sklearn.model_selection import train_test_split
+
+def eval_set (model, dataset, device):
+
+    rmse = torchmetrics.MeanSquaredError(squared=False).to(device)
+    tm_eval = evaluate_tm(model, dataset, rmse, device)
+    print(f"\nEvaluacion del modelo en un TensorDataset con RMSE (metrica implementada con torchmetrics): {tm_eval}")
 
 def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device):
     early_stopping = [0.05, 0.0, 10.0]
