@@ -8,7 +8,7 @@ def eval_set (model, dataset, device):
 
     rmse = torchmetrics.MeanSquaredError(squared=False).to(device)
     tm_eval = evaluate_tm(model, dataset, rmse, device)
-    print(f"\nEvaluacion del modelo en un TensorDataset con RMSE (metrica implementada con torchmetrics): {tm_eval}")
+    print(f"\nEvaluacion del modelo  con RMSE (metrica implementada con torchmetrics): {tm_eval}")
 
 def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device):
     early_stopping = [0.05, 0.0, 10.0]
@@ -106,6 +106,7 @@ def train_bgd(model, optimizer, criterion, X_train, y_train, n_epochs):
         print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {loss.item()}")
 
 def train_test_val(dataset, etiquetas):
+
     train_ratio = 0.75
     validation_ratio = 0.15
     test_ratio = 0.10
@@ -141,3 +142,81 @@ def train_test_val(dataset, etiquetas):
     y_test = torch.FloatTensor(y_test).reshape(-1, 1)
 
     return x_train,x_test,x_val,y_train,y_test,y_val
+
+def train_minibatch_gd_multiinput(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device):
+    early_stopping = [0.05, 0.0, 10.0]
+    last_loss = 0
+    for epoch in range(n_epochs):
+        # Para diferenciar los diferentes modos de un entrenamiento tenemos model.train() y model.eval()
+
+        # model.train(): Activa comportamiento de entrenamiento:
+
+        #     Dropout: apaga neuronas aleatoriamente.
+        #     BatchNorm: usa estadísticas del batch actual y actualiza medias/varianzas internas.
+
+        # Se usa antes del loop de entrenamiento.
+        model.train()
+
+        
+        model.train()
+        # -------- TRAIN --------
+        total_loss = 0.0
+        # Como el dataloador ahora devuelve 3 tensores, modificamos la logica del entrenamiento
+        for inputs, y_batch in train_loader:           
+
+            # Para mover mas rapido a la GPU los batches, utilizar non_blocking=true para no bloquear el hilo principal
+            inputs = {name: X.to(device) for name, X in inputs.items()}
+            y_batch = y_batch.to(device)
+            y_pred = model(X_wide=inputs["X_wide"], X_deep=inputs["X_deep"])
+
+
+            loss = criterion(y_pred, y_batch)
+            total_loss += loss.item()
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            
+
+
+        mean_loss = total_loss / len(train_loader)
+        print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {mean_loss:.4f}")
+
+        
+
+        # model.eval(): Activa comportamiento de inferencia/validación:
+
+        #     Dropout: se desactiva.
+        #     BatchNorm: usa estadísticas acumuladas, no las del batch.
+
+        # Se usa para validación/test/inferencia.
+
+        model.eval()
+        eval_set(model, train_loader, device)
+
+        # -------- VALIDATION (end of epoch) --------
+        val_loss = 0.0
+        # El modo eval no desactiva gradientes, hay que seguir explicitando esta restriccion
+        with torch.no_grad():
+            for inputs, y_batch in eval_loader:
+                inputs = {name: X.to(device) for name, X in inputs.items()}
+                y_batch = y_batch.to(device)
+                y_pred = model(X_wide=inputs["X_wide"], X_deep=inputs["X_deep"])
+                
+                vloss = criterion(y_pred, y_batch)
+                val_loss += vloss.item()
+
+        mean_val_loss = val_loss / len(eval_loader)
+        print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
+
+        eval_set(model, eval_loader, device)
+
+        # Early stopping sobre val_loss
+        if abs(mean_val_loss - last_loss) < early_stopping[0]:
+            if early_stopping[1] >= early_stopping[2]:
+                print(f"Parada por early stopping con pérdida de validación: {mean_val_loss:.4f}")
+                break
+            early_stopping[1] += 1
+        else:
+            last_loss = mean_val_loss
+            early_stopping[1] = 0
