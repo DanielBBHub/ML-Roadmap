@@ -220,3 +220,89 @@ def train_minibatch_gd_multiinput(model, optimizer, criterion, train_loader, eva
         else:
             last_loss = mean_val_loss
             early_stopping[1] = 0
+
+def train_minibatch_gd_multoutput(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device):
+    early_stopping = [0.05, 0.0, 10.0]
+    last_loss = 0
+    for epoch in range(n_epochs):
+        # Para diferenciar los diferentes modos de un entrenamiento tenemos model.train() y model.eval()
+
+        # model.train(): Activa comportamiento de entrenamiento:
+
+        #     Dropout: apaga neuronas aleatoriamente.
+        #     BatchNorm: usa estadísticas del batch actual y actualiza medias/varianzas internas.
+
+        # Se usa antes del loop de entrenamiento.      
+        model.train()
+        
+        # -------- TRAIN --------
+        total_loss = 0.0
+        # Como el dataloador ahora devuelve 3 tensores, modificamos la logica del entrenamiento
+        for inputs, y_batch in train_loader:           
+
+            # Para mover mas rapido a la GPU los batches, utilizar non_blocking=true para no bloquear el hilo principal
+            inputs = {name: X.to(device) for name, X in inputs.items()}
+            y_batch = y_batch.to(device)
+            # Modificacion para obtener las dos predicciones del modelo
+            y_pred, y_pred_aux = model(**inputs)
+            # Perdida de la respuesta principal de la red
+            main_loss = criterion(y_pred, y_batch)
+            # Perdida de la respuesta secundaria de la red
+            aux_loss = criterion(y_pred_aux, y_batch)
+            # Recalculo de la perdida, teniendo en cuenta las dos posibles respuestas
+            loss = 0.8 * main_loss + 0.2 * aux_loss
+            total_loss += loss.item()
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            
+
+
+        mean_loss = total_loss / len(train_loader)
+        print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {mean_loss:.4f}")
+
+        
+
+        # model.eval(): Activa comportamiento de inferencia/validación:
+
+        #     Dropout: se desactiva.
+        #     BatchNorm: usa estadísticas acumuladas, no las del batch.
+
+        # Se usa para validación/test/inferencia.
+
+        model.eval()
+        eval_set(model, train_loader, device)
+
+        # -------- VALIDATION (end of epoch) --------
+        val_loss = 0.0
+        # El modo eval no desactiva gradientes, hay que seguir explicitando esta restriccion
+        with torch.no_grad():
+            for inputs, y_batch in eval_loader:
+                 # Para mover mas rapido a la GPU los batches, utilizar non_blocking=true para no bloquear el hilo principal
+                inputs = {name: X.to(device) for name, X in inputs.items()}
+                y_batch = y_batch.to(device)
+                # Modificacion para obtener las dos predicciones del modelo
+                y_pred, y_pred_aux = model(**inputs)
+                # Perdida de la respuesta principal de la red
+                main_loss = criterion(y_pred, y_batch)
+                # Perdida de la respuesta secundaria de la red
+                aux_loss = criterion(y_pred_aux, y_batch)
+                # Recalculo de la perdida, teniendo en cuenta las dos posibles respuestas
+                loss = 0.8 * main_loss + 0.2 * aux_loss
+                val_loss += loss.item()
+
+        mean_val_loss = val_loss / len(eval_loader)
+        print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
+
+        eval_set(model, eval_loader, device)
+
+        # Early stopping sobre val_loss
+        if abs(mean_val_loss - last_loss) < early_stopping[0]:
+            if early_stopping[1] >= early_stopping[2]:
+                print(f"Parada por early stopping con pérdida de validación: {mean_val_loss:.4f}")
+                break
+            early_stopping[1] += 1
+        else:
+            last_loss = mean_val_loss
+            early_stopping[1] = 0

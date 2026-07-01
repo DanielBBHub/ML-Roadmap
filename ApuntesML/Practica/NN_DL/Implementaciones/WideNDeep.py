@@ -103,3 +103,33 @@ class WideAndDeepDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         input_dict = {"X_wide": self.X_wide[idx], "X_deep": self.X_deep[idx]}
         return input_dict, self.y[idx]
+
+### BUILDING MODELS WITH MULTIPLE OUTPUTS
+
+# En otras ocasiones necesitas una red capaz de generar multiples salidas:
+#   - Requisito de la tarea, el objetivo es localizar y clasificar un objeto en una imagen (regresion y clasificacion)
+#   - Varias tareas utilizando la misma informacion
+
+class WideAndDeepV4(nn.Module):
+    def __init__(self, n_features):
+        super().__init__()
+        # Propiedad de "Module" donde defines las capas de la red,
+        # en este caso una red secuencial con una capa de entrada y una intermedia
+        # Esta sera la parte "profunda" de nuestro modelo
+        self.deep_stack = nn.Sequential(
+        nn.Linear(n_features - 2, 50), nn.ReLU(),
+        nn.Linear(50, 40), nn.ReLU(),
+        )    
+        # Propiedad de "Module" que define la capa de salida, la entrada es
+        self.output_layer = nn.Linear(40 + 5, 1)
+        # Definicion de una capa de salida adicional
+        self.aux_output_layer = nn.Linear(40, 1)
+
+    def forward(self, X_wide, X_deep):
+        deep_output = self.deep_stack(X_deep)
+        wide_and_deep = torch.concat([X_wide, deep_output], dim=1)
+        # Definicion de las salidas, una con la informacion completa (deep n wide) 
+        # y otra con la informacion salida de la red
+        main_output = self.output_layer(wide_and_deep)
+        aux_output = self.aux_output_layer(deep_output)
+        return main_output, aux_output

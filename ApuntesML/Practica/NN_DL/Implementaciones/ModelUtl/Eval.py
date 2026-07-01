@@ -39,7 +39,9 @@ def evaluate_tm(model, data_loader, metric, device):
             # - X_batch es tensor, o
             # - tu forward acepta dict (forward(self, X) con X["X_wide"], X["X_deep"])
             if isinstance(X_batch, dict):
-                y_pred = model(X_batch["X_wide"], X_batch["X_deep"])
+                
+                y_pred, _ = model(X_batch["X_wide"], X_batch["X_deep"])
+          
             else:
                 y_pred = model(X_batch)
 
