@@ -8,3 +8,4 @@ mlenv312/
 **/mlenv312/
 __pycache__/
 *.pyc
+**/datasets

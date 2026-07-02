@@ -45,5 +45,9 @@ def evaluate_tm(model, data_loader, metric, device):
             else:
                 y_pred = model(X_batch)
 
+            try:
+                y_pred = torch.argmax(y_pred, 1)
+            except Exception as e:
+                print(f"{e}")
             metric.update(y_pred, y_batch)
     return metric.compute()

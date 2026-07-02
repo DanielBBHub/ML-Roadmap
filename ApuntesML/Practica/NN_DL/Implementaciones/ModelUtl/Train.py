@@ -4,13 +4,15 @@ from ModelUtl.Eval import evaluate, evaluate_tm
 # Import de la función de separado de conjuntos de entrenamiento/test
 from sklearn.model_selection import train_test_split
 
-def eval_set (model, dataset, device):
+def eval_set (model, dataset, device, eval_func = False):
 
-    rmse = torchmetrics.MeanSquaredError(squared=False).to(device)
-    tm_eval = evaluate_tm(model, dataset, rmse, device)
-    print(f"\nEvaluacion del modelo  con RMSE (metrica implementada con torchmetrics): {tm_eval}")
+    if not eval_func:
+        eval_func = torchmetrics.MeanSquaredError(squared=False).to(device)
+        
+    tm_eval = evaluate_tm(model, dataset, eval_func, device)
+    print(f"\nEvaluacion del modelo con (metrica implementada con torchmetrics): {tm_eval}")
 
-def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device):
+def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device, eval_func = False):
     early_stopping = [0.05, 0.0, 10.0]
     last_loss = 0
     for epoch in range(n_epochs):
@@ -59,7 +61,10 @@ def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n
         # Se usa para validación/test/inferencia.
 
         model.eval()
-        eval_set(model, train_loader, device)
+        if not eval_func:
+            eval_set(model, train_loader, device)
+        else:
+            eval_set(model, train_loader, device, eval_func)
 
         # -------- VALIDATION (end of epoch) --------
         val_loss = 0.0
@@ -75,7 +80,10 @@ def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n
         mean_val_loss = val_loss / len(eval_loader)
         print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
 
-        eval_set(model, eval_loader, device)
+        if not eval_func:
+            eval_set(model, eval_loader, device)
+        else:
+            eval_set(model, eval_loader, device, eval_func)
 
         # Early stopping sobre val_loss
         if abs(mean_val_loss - last_loss) < early_stopping[0]:
