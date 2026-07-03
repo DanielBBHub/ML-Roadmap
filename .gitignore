@@ -9,3 +9,4 @@ mlenv312/
 __pycache__/
 *.pyc
 **/datasets
+**.pt

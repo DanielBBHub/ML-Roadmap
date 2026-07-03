@@ -81,9 +81,9 @@ def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n
         print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
 
         if not eval_func:
-            eval_set(model, eval_loader, device)
+            eval_calc = eval_set(model, eval_loader, device)
         else:
-            eval_set(model, eval_loader, device, eval_func)
+            eval_calc = eval_set(model, eval_loader, device, eval_func)
 
         # Early stopping sobre val_loss
         if abs(mean_val_loss - last_loss) < early_stopping[0]:
@@ -94,6 +94,7 @@ def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n
         else:
             last_loss = mean_val_loss
             early_stopping[1] = 0
+    return eval_calc
 
 # El bucle de entrenamiento es igual, pero ahora ya no se trabaja con tensores y autograd directamente,
 # si no que los modulos se encargan de hacer ese trabajo.
@@ -314,3 +315,92 @@ def train_minibatch_gd_multoutput(model, optimizer, criterion, train_loader, eva
         else:
             last_loss = mean_val_loss
             early_stopping[1] = 0
+
+def train_minibatch_gd_prune(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device, trial, eval_func = False):
+    early_stopping = [0.05, 0.0, 10.0]
+    last_loss = 0
+    for epoch in range(n_epochs):
+        # Para diferenciar los diferentes modos de un entrenamiento tenemos model.train() y model.eval()
+
+        # model.train(): Activa comportamiento de entrenamiento:
+
+        #     Dropout: apaga neuronas aleatoriamente.
+        #     BatchNorm: usa estadísticas del batch actual y actualiza medias/varianzas internas.
+
+        # Se usa antes del loop de entrenamiento.
+        model.train()
+
+        
+        model.train()
+        # -------- TRAIN --------
+        total_loss = 0.0
+        for X_batch, y_batch in train_loader:           
+
+            # Para mover mas rapido a la GPU los batches, utilizar non_blocking=true para no bloquear el hilo principal
+            X_batch = X_batch.to(device, non_blocking=True)
+            y_batch = y_batch.to(device, non_blocking=True)
+
+
+            y_pred = model(X_batch)
+
+            loss = criterion(y_pred, y_batch)
+            total_loss += loss.item()
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            
+
+
+        mean_loss = total_loss / len(train_loader)
+        print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {mean_loss:.4f}")
+
+        
+
+        # model.eval(): Activa comportamiento de inferencia/validación:
+
+        #     Dropout: se desactiva.
+        #     BatchNorm: usa estadísticas acumuladas, no las del batch.
+
+        # Se usa para validación/test/inferencia.
+
+        model.eval()
+        if not eval_func:
+            eval_set(model, train_loader, device)
+        else:
+            eval_set(model, train_loader, device, eval_func)
+
+        # -------- VALIDATION (end of epoch) --------
+        val_loss = 0.0
+        # El modo eval no desactiva gradientes, hay que seguir explicitando esta restriccion
+        with torch.no_grad():
+            for X_val, y_val in eval_loader:
+                X_val = X_val.to(device, non_blocking=True)
+                y_val = y_val.to(device, non_blocking=True)
+                y_val_pred = model(X_val)
+                vloss = criterion(y_val_pred, y_val)
+                val_loss += vloss.item()
+
+        mean_val_loss = val_loss / len(eval_loader)
+        print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
+        eval_calc = 0.0
+
+        if not eval_func:
+            eval_calc = eval_set(model, eval_loader, device)
+        else:
+            eval_calc = eval_set(model, eval_loader, device, eval_func)
+
+        trial.report(eval_calc, epoch)
+        if trial.should_prune():
+            raise optuna.TrialPruned()
+
+        # Early stopping sobre val_loss
+        if abs(mean_val_loss - last_loss) < early_stopping[0]:
+            if early_stopping[1] >= early_stopping[2]:
+                print(f"Parada por early stopping con pérdida de validación: {mean_val_loss:.4f}")
+                break
+            early_stopping[1] += 1
+        else:
+            last_loss = mean_val_loss
+            early_stopping[1] = 0
+    return eval_calc
