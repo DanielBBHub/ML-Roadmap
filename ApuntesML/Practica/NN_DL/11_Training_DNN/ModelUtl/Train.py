@@ -3,7 +3,7 @@ import torchmetrics
 from ModelUtl.Eval import evaluate, evaluate_tm
 # Import de la función de separado de conjuntos de entrenamiento/test
 from sklearn.model_selection import train_test_split
-
+import copy
 def eval_set (model, dataset, device, eval_func = False):
 
     if not eval_func:
@@ -12,70 +12,88 @@ def eval_set (model, dataset, device, eval_func = False):
     tm_eval = evaluate_tm(model, dataset, eval_func, device)
     print(f"\nEvaluacion del modelo con (metrica implementada con torchmetrics): {tm_eval}")
 
-def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n_epochs, device, eval_func = False):
-    early_stopping = [0.05, 0.0, 10.0]
-    last_loss = 0
+def train_minibatch_gd(
+    model, optimizer, criterion, train_loader, eval_loader,
+    n_epochs, device, eval_func=False, min_delta=0.002, patience=6
+):
+    # Early stopping:
+    # min_delta: mejora mínima exigida en val_loss para considerar que realmente mejoró
+    # patience: número de épocas consecutivas sin mejora significativa antes de parar
+    best_val_loss = float("inf")
+    patience_counter = 0
+
+    # Guardamos el mejor estado del modelo para restaurarlo al final
+    best_state = copy.deepcopy(model.state_dict())
+
+    eval_calc = None
+
     for epoch in range(n_epochs):
         # Para diferenciar los diferentes modos de un entrenamiento tenemos model.train() y model.eval()
 
         # model.train(): Activa comportamiento de entrenamiento:
-
         #     Dropout: apaga neuronas aleatoriamente.
         #     BatchNorm: usa estadísticas del batch actual y actualiza medias/varianzas internas.
-
         # Se usa antes del loop de entrenamiento.
-        
         model.train()
+
         # -------- TRAIN --------
         total_loss = 0.0
-        for X_batch, y_batch in train_loader:           
+        total_train_samples = 0
 
-            # Para mover mas rapido a la GPU los batches, utilizar non_blocking=true para no bloquear el hilo principal
+        for X_batch, y_batch in train_loader:
+            # Para mover mas rapido a la GPU los batches, utilizar non_blocking=True
+            # para no bloquear el hilo principal
             X_batch = X_batch.to(device, non_blocking=True)
             y_batch = y_batch.to(device, non_blocking=True)
 
+            # Poner gradientes a cero antes del backward para evitar acumulación
+            optimizer.zero_grad()
 
             y_pred = model(X_batch)
-
             loss = criterion(y_pred, y_batch)
-            total_loss += loss.item()
 
             loss.backward()
             optimizer.step()
-            optimizer.zero_grad()
-            
 
+            # Acumulamos pérdida ponderada por tamaño de batch
+            bs = y_batch.size(0)
+            total_loss += loss.item() * bs
+            total_train_samples += bs
 
-        mean_loss = total_loss / len(train_loader)
+        mean_loss = total_loss / total_train_samples
         print(f"Epoch {epoch + 1}/{n_epochs}, Loss: {mean_loss:.4f}")
 
-        
-
         # model.eval(): Activa comportamiento de inferencia/validación:
-
         #     Dropout: se desactiva.
         #     BatchNorm: usa estadísticas acumuladas, no las del batch.
-
         # Se usa para validación/test/inferencia.
-
         model.eval()
+
+        # Evaluación sobre train para monitorizar (opcional)
         if not eval_func:
             eval_set(model, train_loader, device)
         else:
             eval_set(model, train_loader, device, eval_func)
 
         # -------- VALIDATION (end of epoch) --------
-        val_loss = 0.0
-        # El modo eval no desactiva gradientes, hay que seguir explicitando esta restriccion
+        val_loss_sum = 0.0
+        total_val_samples = 0
+
+        # El modo eval no desactiva gradientes, hay que seguir explicitando esta restricción
         with torch.no_grad():
             for X_val, y_val in eval_loader:
                 X_val = X_val.to(device, non_blocking=True)
                 y_val = y_val.to(device, non_blocking=True)
+
                 y_val_pred = model(X_val)
                 vloss = criterion(y_val_pred, y_val)
-                val_loss += vloss.item()
 
-        mean_val_loss = val_loss / len(eval_loader)
+                # Acumulamos pérdida ponderada por tamaño de batch para cálculo más correcto
+                bs = y_val.size(0)
+                val_loss_sum += vloss.item() * bs
+                total_val_samples += bs
+
+        mean_val_loss = val_loss_sum / total_val_samples
         print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
 
         if not eval_func:
@@ -83,15 +101,22 @@ def train_minibatch_gd(model, optimizer, criterion, train_loader, eval_loader, n
         else:
             eval_calc = eval_set(model, eval_loader, device, eval_func)
 
-        # Early stopping sobre val_loss
-        if abs(mean_val_loss - last_loss) < early_stopping[0]:
-            if early_stopping[1] >= early_stopping[2]:
-                print(f"Parada por early stopping con pérdida de validación: {mean_val_loss:.4f}")
-                break
-            early_stopping[1] += 1
+        # Early stopping sobre val_loss:
+        # Solo consideramos mejora si baja al menos min_delta respecto al mejor valor histórico
+        if mean_val_loss < (best_val_loss - min_delta):
+            best_val_loss = mean_val_loss
+            best_state = copy.deepcopy(model.state_dict())
+            patience_counter = 0
         else:
-            last_loss = mean_val_loss
-            early_stopping[1] = 0
+            patience_counter += 1
+            print(f"EarlyStopping: {patience_counter}/{patience} sin mejora significativa")
+
+            if patience_counter >= patience:
+                print(f"Parada por early stopping. Mejor val_loss: {best_val_loss:.4f}")
+                break
+
+    # Restauramos el mejor modelo encontrado durante el entrenamiento
+    model.load_state_dict(best_state)
     return eval_calc
 
 # El bucle de entrenamiento es igual, pero ahora ya no se trabaja con tensores y autograd directamente,
