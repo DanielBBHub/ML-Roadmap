@@ -1,16 +1,63 @@
 import torch
 import torchmetrics
-from ModelUtl.Eval import evaluate, evaluate_tm
+from ModelUtl.Eval import evaluate, evaluate_tm, confusion_matrix_binary_visual
 # Import de la función de separado de conjuntos de entrenamiento/test
 from sklearn.model_selection import train_test_split
 import copy
+from torchmetrics.classification import BinaryAccuracy
+
 def eval_set (model, dataset, device, eval_func = False):
 
     if not eval_func:
-        eval_func = torchmetrics.MeanSquaredError(squared=False).to(device)
-        
+        acc = BinaryAccuracy().to(device)
+    
+    
     tm_eval = evaluate_tm(model, dataset, eval_func, device)
-    print(f"\nEvaluacion del modelo con (metrica implementada con torchmetrics): {tm_eval}")
+    print("Accuracy:", tm_eval.item())
+
+   
+
+def _prepare_for_loss(y_pred, y_true, criterion):
+    """
+    Ajusta shapes/dtypes según la loss:
+    - BCEWithLogitsLoss: input y target misma forma (normalmente [B,1]), target float
+    - CrossEntropyLoss: y_pred [B,C], y_true [B] long
+    """
+    if isinstance(criterion, torch.nn.BCEWithLogitsLoss):
+        # y_pred esperado [B,1] o [B]
+        if y_pred.ndim == 2 and y_pred.size(1) == 1 and y_true.ndim == 1:
+            y_true = y_true.unsqueeze(1)  # [B] -> [B,1]
+        y_true = y_true.float()
+    else:
+        # Caso típico multiclase
+        y_true = y_true.long()
+
+    return y_pred, y_true
+
+
+def _batch_accuracy_percent(y_pred, y_true, criterion):
+    """
+    Accuracy en porcentaje para imprimir por época.
+    """
+    if isinstance(criterion, torch.nn.BCEWithLogitsLoss):
+        # Binario con logits
+        probs = torch.sigmoid(y_pred)
+        preds = (probs >= 0.5).long()
+
+        if y_true.ndim == 1:
+            y_true = y_true.unsqueeze(1)
+        y_true = y_true.long()
+
+        correct = (preds == y_true).sum().item()
+        total = y_true.numel()
+    else:
+        # Multiclase
+        preds = torch.argmax(y_pred, dim=1)
+        y_true = y_true.long()
+        correct = (preds == y_true).sum().item()
+        total = y_true.size(0)
+
+    return correct, total
 
 def train_minibatch_gd(
     model, optimizer, criterion, train_loader, eval_loader,
@@ -50,7 +97,12 @@ def train_minibatch_gd(
             optimizer.zero_grad()
 
             y_pred = model(X_batch)
-            loss = criterion(y_pred, y_batch)
+
+            # Ajustamos shapes/dtypes según la loss:
+            # - BCEWithLogitsLoss: y_pred/y_true misma forma (p.ej. [B,1]) y target float
+            # - CrossEntropyLoss: y_true tipo long con forma [B]
+            y_pred, y_batch_loss = _prepare_for_loss(y_pred, y_batch, criterion)
+            loss = criterion(y_pred, y_batch_loss)
 
             loss.backward()
             optimizer.step()
@@ -79,6 +131,10 @@ def train_minibatch_gd(
         val_loss_sum = 0.0
         total_val_samples = 0
 
+        # Para accuracy de validación (%)
+        total_correct = 0
+        total_items = 0
+
         # El modo eval no desactiva gradientes, hay que seguir explicitando esta restricción
         with torch.no_grad():
             for X_val, y_val in eval_loader:
@@ -86,15 +142,24 @@ def train_minibatch_gd(
                 y_val = y_val.to(device, non_blocking=True)
 
                 y_val_pred = model(X_val)
-                vloss = criterion(y_val_pred, y_val)
+
+                # Mismo ajuste de shapes/dtypes que en entrenamiento
+                y_val_pred, y_val_loss = _prepare_for_loss(y_val_pred, y_val, criterion)
+                vloss = criterion(y_val_pred, y_val_loss)
 
                 # Acumulamos pérdida ponderada por tamaño de batch para cálculo más correcto
                 bs = y_val.size(0)
                 val_loss_sum += vloss.item() * bs
                 total_val_samples += bs
 
+                # Cálculo de acierto para mostrar porcentaje de validación
+                c, t = _batch_accuracy_percent(y_val_pred, y_val, criterion)
+                total_correct += c
+                total_items += t
+
         mean_val_loss = val_loss_sum / total_val_samples
-        print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}")
+        val_acc_pct = 100.0 * total_correct / total_items if total_items > 0 else 0.0
+        print(f"Epoch {epoch + 1}/{n_epochs}, Val Loss: {mean_val_loss:.4f}, Val Acc: {val_acc_pct:.2f}%")
 
         if not eval_func:
             eval_calc = eval_set(model, eval_loader, device)
@@ -114,11 +179,18 @@ def train_minibatch_gd(
             if patience_counter >= patience:
                 print(f"Parada por early stopping. Mejor val_loss: {best_val_loss:.4f}")
                 break
-
+    """ cm = confusion_matrix_binary_visual(
+    model,
+    eval_loader,
+    device,
+    threshold=0.5,
+    class_names=("Pullover (0)", "T-shirt/top (1)"),
+    normalize=False
+)
+    print("Confusion matrix:\n", cm) """
     # Restauramos el mejor modelo encontrado durante el entrenamiento
     model.load_state_dict(best_state)
     return eval_calc
-
 # El bucle de entrenamiento es igual, pero ahora ya no se trabaja con tensores y autograd directamente,
 # si no que los modulos se encargan de hacer ese trabajo.
 # Este y el metodo utilizando los tensores, esta calculando "batch gradient descent", es decir, esta calculando

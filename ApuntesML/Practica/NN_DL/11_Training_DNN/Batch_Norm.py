@@ -62,12 +62,16 @@ with torch.no_grad():
 
 y_pred = y_pred_logits.argmax(dim=1) # index of the largest logit
 print(f"\nPrediccion con mayor confianza: {y_pred}")
+print(f"\nEtiqueta a predecir: {y_new[:3]}")
 print(f"Etiquetas de las predicciones: {[train_and_valid_data.classes[index] for index in y_pred]}\n")
 
 # Si miramos a los parametros de las capas BN, veremos que tiene "weight" y "bias", 
 # los cuales corresponden a "γ" y "β"
-print(dict(model[1].named_parameters()).keys())
+print(dict(model[2].named_parameters()).keys())
 
 # Si miramos a los buffers de estas capas BN, veremos tres running_mean, running_var, and num_batches_tracked,
 # las dos primeras son "μ" and "σ²"
-print(dict(model[1].named_buffers()).keys())
+print(dict(model[2].named_buffers()).keys())
+
+from SNL import saveWeights
+saveWeights(model, "fashion_preentrenado")

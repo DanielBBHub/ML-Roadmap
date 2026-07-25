@@ -1,6 +1,6 @@
-# Resumen de apuntes: Implementaciones (NN_DL)
+# Resumen de apuntes: Implementaciones (PyTorch)
 
-Este documento resume el contenido y la evolución del directorio `ApuntesML/Practica/NN_DL/Implementaciones`.
+Este documento resume el contenido y la evolución del directorio `ApuntesML/Practica/NN_DL/10_Implementaciones_PyTorch`.
 
 ## 1) `ModelUtl/Train.py`
 
@@ -141,16 +141,6 @@ Es el archivo donde se integran los conceptos nuevos del directorio: multi-input
 
 ---
 
-## 9) `Resumen_Implementaciones.md`
-
-### Idea principal
-Documento de síntesis del directorio, actualizado para reflejar la incorporación de:
-- utilidades modulares (`ModelUtl`),
-- arquitecturas no secuenciales (`WideNDeep`),
-- y experimentación comparativa (`NonSecuential`).
-
----
-
 ## Panorama general actual del directorio
 
 La progresión ya no es solo “lineal → MLP → mini-batch”, sino:
@@ -161,4 +151,4 @@ La progresión ya no es solo “lineal → MLP → mini-batch”, sino:
 4. **Arquitecturas no secuenciales y multi-input** (`WideNDeep.py`).
 5. **Comparación experimental integrada** (`NonSecuential.py`).
 
-En conjunto, el directorio refleja una evolución clara desde implementaciones básicas de regresión hasta pipelines de entrenamiento más completos y flexibles para modelos con múltiples rutas de entrada.
+En conjunto, el directorio refleja una evolución clara desde implementaciones básicas de regresión hasta pipelines de entrenamiento más completos y flexibles para modelos

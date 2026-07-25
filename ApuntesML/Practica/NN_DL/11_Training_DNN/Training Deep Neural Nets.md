@@ -8,7 +8,7 @@ Desgraciadamente, los gradientes suelen hacerse más y más pequeños cuanto des
 
 Por otro lado, puede suceder los contrario con los gradientes. Estos crecen y crecen hasta que las capas tienen unos pesos absolutamente enormes. A esto se le conoce como el problema de los gradientes que explotan.
 
-Como se pudo demostrar en un paper academico [https://homl.info/47], el problema con la inestabilidad de los pesos era una combinación entre la función sigmoide de activación y el metodo de inicialización. En el caso de la función sigmoide, cuando las entradas son muy grandes ($[- \infty, \infty]$) la funcion de activación tiende a saturar $[0, 1]$, con una derivada que tiende a $0$, con lo que la backprop no tiene casi gradiente que propagar.
+Como se pudo demostrar en un paper academico [ https://homl.info/47 ], el problema con la inestabilidad de los pesos era una combinación entre la función sigmoide de activación y el metodo de inicialización. En el caso de la función sigmoide, cuando las entradas son muy grandes ($[ - \infty, \infty ]$) la funcion de activación tiende a saturar $[ 0, 1 ]$, con una derivada que tiende a $0$, con lo que la backprop no tiene casi gradiente que propagar.
 
 ### Inicialización de Glorot e Inicialización de He
 
@@ -16,7 +16,7 @@ En el paper anterior, Glorot y Bengio proponen un método para aliviar significa
 
 - Distribución normal con media 0 y varianza $\large \sigma ^2 = \frac{1}{fan_{avg}}$
 
-- Distribución uniforme entre $\large [-r, r,]$ con $r = \sqrt{\frac{3}{fan_{avg}}}$
+- Distribución uniforme entre $\large [ -r, r, ]$ con $r = \sqrt{\frac{3}{fan_{avg}}}$
 
 Por otro lado, la estrategia de inicialización propuesta para la función ReLU de activación son las Inicializaciones de He o Kaiming
 
@@ -30,11 +30,11 @@ Para resolver este problema hay variaciones de la funcion:
 
 Esta función esta caracterizada por $LeakyReLU_{\alpha}(z) = max(az, z)$, donde el hiperparametro $\alpha$ define cuanto "filtra" la función, preparando una pendiente en la función con el que dar valores a las entradas negativas.
 
-En un paper de 2015 [https://homl.info/49] se comparan variantes de ReLU y se obtiene un mejor desempeño en todas, sobre la función original. En este experimento se explica que para Leaky ReLU funciona incluso mejor pendientes altas que mas bajas (0.2 vs 0.01). Por otro lado se evalua RReLU (random ReLU), en el que se elige $\alpha$ de manera aleatoria en un rango dentro del entrenamiento y se ajusta a la media para el testeo. Por ultimo se estudia PReLU (parametric leaky ReLU), donde el $\alpha$ se convierte en un parametro mas del entrenamiento y es sujeto a backprop. Este último es capaz de tasas de acierto muy buenas en grandes conjuntos de imagenes, pero cuando la información escasea tiende a hacer overfitting
+En un paper de 2015 [ https://homl.info/49 ] se comparan variantes de ReLU y se obtiene un mejor desempeño en todas, sobre la función original. En este experimento se explica que para Leaky ReLU funciona incluso mejor pendientes altas que mas bajas (0.2 vs 0.01). Por otro lado se evalua RReLU (random ReLU), en el que se elige $\alpha$ de manera aleatoria en un rango dentro del entrenamiento y se ajusta a la media para el testeo. Por ultimo se estudia PReLU (parametric leaky ReLU), donde el $\alpha$ se convierte en un parametro mas del entrenamiento y es sujeto a backprop. Este último es capaz de tasas de acierto muy buenas en grandes conjuntos de imagenes, pero cuando la información escasea tiende a hacer overfitting
 
-### ELU y SELU
+#### ELU y SELU
 
-En un paper de 2015 [https://homl.info/50] se planteo una función de activación que superaba el desempeño de todas las variantes de ReLU, reduciendo tiempo de entrenamiento y mejorando las predicciones de la red neuronal en el conjunto de prueba. La ecuación que describe la Exponential Linear Unit (ELU) es la siguiente:
+En un paper de 2015 [ https://homl.info/50 ] se planteo una función de activación que superaba el desempeño de todas las variantes de ReLU, reduciendo tiempo de entrenamiento y mejorando las predicciones de la red neuronal en el conjunto de prueba. La ecuación que describe la Exponential Linear Unit (ELU) es la siguiente:
 
 $$
 \text{ELU}_{\alpha}(z) = 
@@ -54,7 +54,7 @@ Aun que el resultado de esta función de activación sea parecido al de la ReLU,
 
 Para utilizar ELU en PyTorch solo hay que utilizar el modulo nn.ELU junto a la inicialización Kaiming
 
-Por otro lado, en 2017 se planteó una variación de ELU, SELU (scaled ELU) en un paper [https://homl.info/selu]. En dicho paper se demostro que si se implementa una red neuronal de capas densas y si todas las capas utilizan SELU, la red normalizará por si misma las salidas con una media de 0 y una desviación estandard de 1, lo cual contrarresta completamente la explosión/desvanecimiento de los gradiente.
+Por otro lado, en 2017 se planteó una variación de ELU, SELU (scaled ELU) en un paper [ https://homl.info/selu ]. En dicho paper se demostro que si se implementa una red neuronal de capas densas y si todas las capas utilizan SELU, la red normalizará por si misma las salidas con una media de 0 y una desviación estandard de 1, lo cual contrarresta completamente la explosión/desvanecimiento de los gradiente.
 
 Para utilizarlo se ha de llamar al modulo nn.SELU, con las siguientes restricciones:
 
@@ -66,9 +66,9 @@ Para utilizarlo se ha de llamar al modulo nn.SELU, con las siguientes restriccio
 
 - No se pueden utilizar tecnicas de regularización como ℓ1 o ℓ2, normalización de lotes, capas, max o dropout
 
-### GELU, Swish, SwiGLU, Mish, y RELU²
+#### GELU, Swish, SwiGLU, Mish, y RELU²
 
-La función GELU(Gaussian Error Linear Unit) fue presentada en un paper de 2016 [https://homl.info/gelu] y se puede considerar una variante suave de ReLU. Se define con la siguiente fórmula:
+La función GELU(Gaussian Error Linear Unit) fue presentada en un paper de 2016 [ https://homl.info/gelu ] y se puede considerar una variante suave de ReLU. Se define con la siguiente fórmula:
 $$
 \large
 GELU(z) = z\Phi(z)
@@ -76,7 +76,7 @@ $$
 
 Siendo $\Phi$ una función de distribución acumilativa Gaussiana $(CDF): \Phi(z)$, que corresponde a la probabilidad de que un valor muestreado al azar de una distribución normal con mediana 0 y varianza 1 es menor que z.
 
-Swish nace como una variación de GELU en un paper de 2017 [https://homl.info/swish], una aproximación de la función de activación para aligerar el tiempo de computación de los gradientes. Esta se ve definida como:
+Swish nace como una variación de GELU en un paper de 2017 [ https://homl.info/swish ], una aproximación de la función de activación para aligerar el tiempo de computación de los gradientes. Esta se ve definida como:
 
 $$
 \large
@@ -92,14 +92,14 @@ $$
 
 Este parametro puede ser entrenable, normalmente suele tener un único parametro para el modelo entero o, como mucho, uno por cada capa para mantener el modelo eficiente y evitar el overfitting
 
-Una variante popular de Swish es SwiGLU [https://homl.info/swiglu], en la cual las entradas pasan por la función de activación Swish y en paralelo por una capa lineal para, finalmente, multiplicar los resultados:
+Una variante popular de Swish es SwiGLU [ https://homl.info/swiglu ], en la cual las entradas pasan por la función de activación Swish y en paralelo por una capa lineal para, finalmente, multiplicar los resultados:
 
 $$
 \large
 SwiGLU(z) = Swish_{\beta}(z) ⊗ Linear(z)
 $$
 
-Otra función de activación parecida a GELU es Mish, planteada en 2019 [https://homl.info/mish]. Se define de la siguiente manera:
+Otra función de activación parecida a GELU es Mish, planteada en 2019 [ https://homl.info/mish ]. Se define de la siguiente manera:
 
 $$
 \large
@@ -114,20 +114,20 @@ $$
 
 Asi como GELU y Swish, es una variante de ReLU suave, no convexa y no monotona
 
-## Normalización de lotes
+### Normalización de lotes
 
 Si bien la inicialización de Kaiming conjuntamente con ReLU evita los problemas anteriores en el principio del entrenamiento, eso no quiere decir que no vaya a volver a lo largo del proceso
 
-Dado lo anterior, en un paper de 2015 [https://homl.info/51] se planteo la normalización de lotes (BN), la cual consistia en añadir una operación antes/despues del cálculo de la función de activación, normalizando y centrando en 0 cada una de las entradas para despues escalar y mover el resultado utilizando dos vectores de parameotrs por capa; uno para escalado, otro para el movimiento.
+Dado lo anterior, en un paper de 2015 [ https://homl.info/51 ] se planteo la normalización de lotes (BN), la cual consistia en añadir una operación antes/despues del cálculo de la función de activación, normalizando y centrando en 0 cada una de las entradas para despues escalar y mover el resultado utilizando dos vectores de parameotrs por capa; uno para escalado, otro para el movimiento.
 
 Con el objetivo de hacer lo anterior, el algoritmo necesita aproximar la media y la desviación de cada entrada, evaluando estas variables sobre el lote actual, de la siguiente manera:
 
 $$
 \large
 \begin{align}
-1. \quad & \boldsymbol{\mu}_B = \frac{1}{m_B} \sum_{i=1}^{m_B} \mathbf{x}^{(i)} \\[10pt]
-2. \quad & \boldsymbol{\sigma}_B^2 = \frac{1}{m_B} \sum_{i=1}^{m_B} \left( \mathbf{x}^{(i)} - \boldsymbol{\mu}_B \right)^2 \\[10pt]
-3. \quad & \widehat{\mathbf{x}}^{(i)} = \frac{\mathbf{x}^{(i)} - \boldsymbol{\mu}_B}{\sqrt{\boldsymbol{\sigma}_B^2 + \varepsilon}} \\[10pt]
+1. \quad & \boldsymbol{\mu}_B = \frac{1}{m_B} \sum_{i=1}^{m_B} \mathbf{x}^{(i)} \\[ 10pt ]
+2. \quad & \boldsymbol{\sigma}_B^2 = \frac{1}{m_B} \sum_{i=1}^{m_B} \left( \mathbf{x}^{(i)} - \boldsymbol{\mu}_B \right)^2 \\[ 10pt ]
+3. \quad & \widehat{\mathbf{x}}^{(i)} = \frac{\mathbf{x}^{(i)} - \boldsymbol{\mu}_B}{\sqrt{\boldsymbol{\sigma}_B^2 + \varepsilon}} \\[ 10pt ]
 4. \quad & \mathbf{z}^{(i)} = \boldsymbol{\gamma} \otimes \widehat{\mathbf{x}}^{(i)} + \boldsymbol{\beta}
 \end{align}
 $$
@@ -157,3 +157,23 @@ Es necesario resaltar que los dos últimos vectores de parámetros se aprenden e
 Estos avances permitieron grandes mejoras en los modelos de clasificación de imágenes de los investigadores; se evito en gran medida el desvanecimiento de gradientes, hasta el punto de poder utilizar funciones de activación que saturan, ademas de ser menos sensibles a la inicialización de pesos e incluso pudieron utilizar LR mas altos. Finalmente, esta técnica actua tambien como regularizador, reduciendo la necesidad de otras técnicas.
 
 Esta estratégia añade complejidad al modelo, volviéndolo mas lento en la inferencia, aun que es posible fusionar las capas BN con las capas previas despues de entrenar, pudiendo evitar esta penalización de tiempo de ejecución.
+
+### Normalización de capas
+
+La normalización de capas (LN) es parecida a la de lotes, pero en vez de normalizar a lo largo de la dimension del lote, lo hace en la dimensión de las característcias. Así se presentó en el paper de 2016 [ https://homl.info/layernorm  ].
+
+Una de las ventajas que tiene LN es que puede calcular en el momento las estadísticas independientemente de cada instancia, con lo que se comporta igual en entrenamiento como en test. Este método también aprende una escala y un offset para cada característica de entrada. 
+
+### Recorte de gradiente
+
+El recorte de gradiente es una técnica que se utiliza para evitar la explosión de gradientes. Se basa en definir un umbral que no pueden sobrepasar en el momento de backrpop. Esta técnica se suele utilizar en las redes neuronales recurrentes, ya que la normalización de lotes es complicada.
+
+## Reusar capas preentrenadas
+
+Normalmente no es la mejor idea entrenar una red profunda desde cero sin buscar otra que ya intente resolver el mismo problema, ya que en el caso de encontrarla se pueden reusar la mayoria de sus capas, exceptuando las de arriba del todo. A esta técnica se le conoce como "transfer learning" y no solo acelerará el entrenamiento considerablemente, si no que necesitará menos información de entrenamiento.
+
+En el caso de tener acceso a una red profunda entrenada para clasificar imagenes en varias clases, incluidas imagenes de coches, y tu idea es implementar una red que clasifique diferentes tipos de coches. Ya que estas tareas son similares, podemos intentar reutilizar partes de la primera red para entrenar la nueva. Una regla general util es que cuanto mas se parezcan las tareas a resolver, mas cantidad de capas preentrenadas se podrán utilizar, aun que la capa de salida habra que reemplazarla y las capas más altas también, ya que son las que estan entrenadas en los detalles más finos. 
+
+> Cabe destacar que si la entrada del nuevo modelo no es del mismo tamaño, será necesario aplicar un paso previo de preprocesado para reescalar ese tamaño.Para poner un ejemplo, si la red neuronal está entrenada con imágenes de teléfonos móviles, servirá para hacer inferencia sobre otras imágenes tomadas con teléfonos, pero no para aquellas adquiridas con satélites.
+
+El objetivo es encontrar el número correcto de capas a reutilizar. Se puede empezar "congelando" (requires_grad=False) las capas para no modificarlas y entrenar el modelo para ver su desempeño. Mas tarde se pueden descongelar una o dos y volver a entrenar para ver si mejora. En general, cuanta mas información tienes, mas capas puedes descongelar, aun que el objetivo es reutilizar capas para acelerar el proceso de entrenamiento.
