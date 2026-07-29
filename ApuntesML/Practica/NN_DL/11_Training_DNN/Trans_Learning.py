@@ -88,3 +88,13 @@ optimizer = torch.optim.Adam(model_B_on_A.parameters(), lr=1e-3, weight_decay=1e
 
 from ModelUtl.Train import train_minibatch_gd
 train_minibatch_gd(model_B_on_A, optimizer, xentropy, train_loader, eval_loader, 30,  device, accuracy) 
+
+model_B_on_A.eval()
+X_new, y_new = next(iter(eval_loader))
+X_new = X_new[:3].to(device)
+with torch.no_grad():
+    y_pred_logits = model_B_on_A(X_new)
+
+y_pred = y_pred_logits.argmax(dim=1) # index of the largest logit
+print(f"\nPrediccion con mayor confianza: {y_pred}")
+print(f"\nEtiqueta a predecir: {y_new[:3]}")

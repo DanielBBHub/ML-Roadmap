@@ -177,3 +177,156 @@ En el caso de tener acceso a una red profunda entrenada para clasificar imagenes
 > Cabe destacar que si la entrada del nuevo modelo no es del mismo tamaño, será necesario aplicar un paso previo de preprocesado para reescalar ese tamaño.Para poner un ejemplo, si la red neuronal está entrenada con imágenes de teléfonos móviles, servirá para hacer inferencia sobre otras imágenes tomadas con teléfonos, pero no para aquellas adquiridas con satélites.
 
 El objetivo es encontrar el número correcto de capas a reutilizar. Se puede empezar "congelando" (requires_grad=False) las capas para no modificarlas y entrenar el modelo para ver su desempeño. Mas tarde se pueden descongelar una o dos y volver a entrenar para ver si mejora. En general, cuanta mas información tienes, mas capas puedes descongelar, aun que el objetivo es reutilizar capas para acelerar el proceso de entrenamiento.
+
+### Preentrenamiento no supervisado
+
+En el caso de tener una tarea compleja, no disponer de un modelo preentrenado y no tener mucha información etiquetada, no poder obtener mas, existe la posibilidad de aplicar el preentrenamiento no supervisado. Si existe un conjunto abundante de información no etiquetada, se puede utilizar para entrenar un modelo no supervisado (así como un autoencoder) y más tarde reutilizar las capas inferiores de este modelo, añadir una capa de salida y hacer fine-tune en la red resultante utilizando información ya etiquetada
+
+Actualmente se suele entrenar el modelo completo sobre la información no etiquetada de una sentada, en vez de ir entrenando capa por capa, congelando las anteriores para entrenar nuevas, ademas de utilizar modelos como los autoencoders o modelos de difusion más que las maquinas de Boltzmann
+
+### Preentrenamiento en una tarea auxiliar
+
+Una última opcion es entrenar una primera red neuronal en una tarea auxiliar, de la cual se puede obtener o generar facilmente información etiqutada, para despues reutilizar las capas inferiores para la tarea para la cual quieres implementar un modelo. Normalmente las capas inferiores del primer modelo aprenderan a reconocer patrones que serán útiles en la segunda red neuronal.
+
+Por ejemplo:
+> Se quiere implementar un sistema de reconocimiento de rostros, únicamente con 2 o 3 imágenes por individuo. Ya que obtener cientos de imágenes por persona no es plausible, se podría utilizar un conjunto de imágenes público (como VGGFace2) con millones de rostros y entrenar una primera red neuronal con estas imágenes, para detectar la misma persona en dos retratos diferentes. Este preentrenamiento será muy útil para más tarde reutilizar las capas del primer modelo, que ya hayan aprendido a reconocer patrones, y entrenar este segundo modelo con la información escasa.
+
+## Optimizadores más rapidos
+
+Hasta ahora hemos visto 4 métodos de acelerar el entrenamiento de las redes neuronales profundas:
+- Estratégias de inicialización
+- Funciones de activación
+- Normalización de lotes y capas
+- Reutilización de capas
+
+Ahora veremos los varios optimizadores mas allá del optimizador de descenso de gradiente normal.
+
+### Momentum
+
+La idea de la optimización del momentum presentada en un paper de 1964 [ https://homl.info/54 ] se basa en afectar el gradiente calculado con una variable dentro del vector de momentum $m$ multiplicado por LR. Hasta ahora el descenso de gradiente se basaba en actualizar los pesos restando directamente el gradiente de la funcion de coste respecto a los pesos multiplicada por el LR de la siguiente manera:
+$$
+\large
+\theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta)
+$$
+
+En otras palabras, en la optimización del momentum, el gradiente es usado como una fuerza de aceleración, no como una velocidad, con lo que para evitar que aumente indefinidamente, se implementa un "mecanismo de rozamiento" en forma de hiperparametro $\beta$ conocido como coeficiente de momentum con valores entre $[0,1]$ (0 máxima fricción, 1 sin fricción). Con lo que la ecuación que define este momentum es la siguiente:
+
+$$
+\large
+\begin{align}
+1.  \quad & m \leftarrow \beta m - \eta \nabla_{\theta}J(\theta) \\ 
+2.  \quad & \theta \leftarrow \theta m 
+\end{align}
+$$
+
+Ya que en la práctica los gradientes no son constantes, puede no apreciarse tanto la aceleración del entrenamiento, pero esta optimización escapa mucho antes de las mesetas que el descenso de gradiente normal, además de ayudar a evitar los máximos locales.
+
+### Gradiente acelerado de Nesterov
+
+Yurii Nesterov propuso en su paper de 1983 [ https://homl.info/55 ] una variante a la optimización de momentum, el gradiente acelerado de Nesterov (NAG), la cual mide el gradiente de la función de coste mas alla de la dirección del momentum, en $\theta+\beta m$, quedando definida de la siguiente manera:
+
+$$
+\large
+\begin{align}
+1. & \quad m \leftarrow \beta m - \eta \nabla_{\theta}J(\theta+\beta m) \\ 
+2. & \quad \theta \leftarrow \theta + m 
+\end{align}
+$$
+
+Esta modificación funciona ya que normalmente el gradiente apuntara en la dirección correcta, con lo que será aún más correcto usar el gradiente medido mas alla en esa dirección, en vez del gradiente en la posición original.
+
+### AdaGrad
+
+Considerando el problema del cuenco alargado en el que el descenso de gradiente comienza yendo rapidamente por la pendiente mas acentuada, aun que no sea la que conduzca al mínimo global, para despues moverse lentamente valle abajo. El algoritmo Adagrad [ https://homl.info/56 ] es capaz de corregir la dirección con el objetivo de moverse hacia el punto óptimo global antes, con una definición como la siguiente:
+
+$$
+\large
+\begin{align}
+1. & \quad s \leftarrow s + \nabla_{\theta}J(\theta) ⊗ \nabla_{\theta}J(\theta)\\ 
+2. & \quad \theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta) ⊘ \sqrt{s + \epsilon}
+\end{align}
+$$
+
+> El símbolo $⊗$ representa multiplicación elemento por elemento, mientras que $⊘$ representa división elemento por elemento
+
+El primer paso del algorítmo acumula el cuadrado de los gradientes en el vector s, lo cual es equivalente a calcular $s_i \leftarrow s_i + (\frac{\partial j(\theta)}{\partial \theta_i})²$ para cada elemento $s_i$ del vector s.
+
+El segundo paso es casi identico al descenso de gradiente, con una diferencia notable ya que el vector de gradientes es escalado por un factor $\sqrt{s + \epsilon}$, siendo $\epsilon$ un factor para evitar las divisiones por 0. Esta forma vectorial es equivalente a calcular para todos los parametros $\theta_i$ lo siguiente: $\large \theta_i \leftarrow \theta_i  \frac{\frac{\eta \partial j(\theta)}{\partial\theta_i}}{\sqrt{s }+ \epsilon}$
+
+Este algoritmo hace decaer el LR, pero lo hace mucho más rapido para dimensiones empinadas que para cuestas suaves, lo que se conoce como aprendizaje adaptativo. 
+
+Por otro lado, si bien funciona correctamente para problemas cuadraticos, puede parar muy pronto el entrenamiento debido a que escala tanto el LR que es incapaz de llegar al punto óptimo global
+
+### RMSProp
+
+RMSProp es una variante de adagrad que evita que el entrenamiento pare antes de converger dado a la desaparición del LR acumulando solo los gradientes de las iteraciones mas recientes, en vez de todos desde el inicio del entrenamiento. Para esto se utiliza la desintegración exponencial en el primer paso:
+
+$$
+\large
+\begin{align}
+1. & \quad  s \leftarrow \alpha s + (1 - \alpha) \nabla_{\theta}J(\theta) ⊗ \nabla_{\theta}J(\theta)\\ 
+2. & \quad \theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta) ⊘ \sqrt{s + \epsilon}
+\end{align}
+$$
+
+> Siendo $\alpha$ el hiperparametro del ratio de desintegración, normalmente definido a 0.9
+
+### Adam
+
+Adam, que significa estimacion de momento adaptativa, combina las ideas de la optimización del momentm y el algoritmo RMSProp. Este optimizador tiene en cuenta la media de la descomposición exponencial de gradientes (optimización de momentum), así como lleva la cuenta de las medias de desintegración exponencial de gradientes cuadrados pasados. Estas son estimaciones de la media sin centrar (primer momentum) y la varianza de los gradientes (segundo momentum):
+
+$$
+\large
+\begin{align}
+1. & \quad\mathbf{m} &\leftarrow \beta_1 \mathbf{m} - (1-\beta_1)\,\nabla_{\boldsymbol{\theta}} J(\boldsymbol{\theta}) \\
+2. & \quad\mathbf{s} &\leftarrow \beta_2 \mathbf{s} + (1-\beta_2)\,\nabla_{\boldsymbol{\theta}} J(\boldsymbol{\theta}) \otimes \nabla_{\boldsymbol{\theta}} J(\boldsymbol{\theta}) \\
+3. & \quad\hat{\mathbf{m}} &\leftarrow \frac{\mathbf{m}}{1-\beta_1^t} \\
+4. & \quad\hat{\mathbf{s}} &\leftarrow \frac{\mathbf{s}}{1-\beta_2^t} \\
+5. & \quad\boldsymbol{\theta} &\leftarrow \boldsymbol{\theta} + \eta\,\hat{\mathbf{m}} \oslash \sqrt{\hat{\mathbf{s}}+\varepsilon}
+\end{align}
+$$
+
+> Siendo $t$ el número de la iteración, $\beta_1$ sería el momentum y $\beta_2$ correspondria al ratio de desintegración $\alpha$ de RMSProp
+
+Mientras que los pasos 1, 2 y 5 son muys similares a los de ADAM y RMSProp, los pasos 3 y 4 son definiciones de los valores para $m$ y $s$, ya que al inicializarse a $0$ estarían sesgados por ese valor al principio del entrenamiento
+
+#### AdaMax
+
+Adam acumula los cuadrados de los gradientes en $s$, como hemos visto antes, además de escalar por debajo las actualizaciones de los parametros por la raiz de $s$, es decir, Adam escala las actualizaciones por la norma $l_2$ (la raíz cuadrada de la suma de los cuadrados)
+
+Por otro lado, AdaMax, introducido en el mismo paper que Adam, reemplaza $l_2$ por $l_{\infty}$, en concreto reemplaza el paso 2 del algoritmo con 
+$$
+\large
+s \leftarrow max(\beta_2 s, abs (\nabla_{\boldsymbol{\theta}} J(\boldsymbol{\theta})))
+$$
+elimina el paso 4 y en el paso 5 escala la actualización de gradientes por $s$; el máximo del valor absoluto de los gradientes desintegrados en el tiempo.
+
+En definitiva, esta variante puede hacer que el algorítmo sea más estable que Adam, pero depende bastante del conjunto de información y en general Adam tiene un mejor desempeño.
+
+#### NAdam
+
+Esta variante es la optimización de Adam con el truco de Nesterov añadido, con lo que llegará a la convergencía más rápido que el algorítmo de Adam base.
+
+#### AdamW
+
+Esta es otra variante de Adam que integra la técnica de regularización de "desintegración de pesos". Esa reduce el tamaño de los pesos de los modelos en cada iteración multiplicandolos por un factor de desintegración
+
+### Conclusión 
+
+Todas las técnicas que se han visto dependen de las Jacobianas, que miden la pendiente de la función de pérdida, aunque hay más algorítmos de optimización basados en las Hessianas, midiendo como cambianlas Jacobianas a lo largo de cada eje. El problema de las Hessianas es el coste computacional  y de espacio de memoria de las segundas derivadas parciales, ya que existen $n²$ por cada salida.
+
+Para acabar, se resume en la siguiente tabla todas las técnicas de optimización con una puntuación del 1-3 en su velocidad de convergencia y la calidad de esta
+
+| Class                                | Convergence speed (1-3) | Convergence quality (1-3) |
+|--------------------------------------|--------------------------|----------------------------|
+| SGD                                  | 1                        | 3                          |
+| SGD(momentum=...)                    | 2                        | 3                          |
+| SGD(momentum=..., nesterov=True)     | 2                        | 3                          |
+| Adagrad                              | 2                        | 1 *(stops too early)*      |
+| RMSprop                              | 2                        | 2 o 3                      |
+| Adam                                 | 2                        | 2 o 3                      |
+| AdaMax                               | 2                        | 2 o 3                      |
+| NAdam                                | 2                        | 2 o 3                      |
+| AdamW                                | 2                        | 2 o 3                      |
+
+## Programación de la tasa de aprendizaje
