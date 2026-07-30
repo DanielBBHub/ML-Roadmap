@@ -1,40 +1,46 @@
-# Entrenando re3des neuronales profundas
+# Entrenando redes neuronales profundas
 
 ## El problema de los gradientes que explotan/desaparecen
 
-La segunda fase del algoritmo de "backprop" funciona propagando el gradiente del error de capa de salida a capa de entrada y una vez que se ha calculado la funcion de perdida, se utilizan para ctualizar los parámetros de la red.
+La segunda fase del algoritmo de backpropagation funciona propagando el gradiente del error desde la capa de salida hasta la capa de entrada. Una vez que se ha calculado la función de pérdida, se utilizan para actualizar los pesos de la red.
 
-Desgraciadamente, los gradientes suelen hacerse más y más pequeños cuanto desciende en la red, teniendo como resultado que la actualización de las primeras capas se ven poco afectadas por el cambio. A esto se le conoce como el problema de los gradientes que desaparecen.
+Desgraciadamente, los gradientes suelen hacerse cada vez más pequeños conforme descienden en la red. Esto tiene como resultado que la actualización de las primeras capas sea muy pequeña, ralentizando significativamente el entrenamiento. A esto se le conoce como el problema de la **desaparición de gradientes** (vanishing gradients).
 
-Por otro lado, puede suceder los contrario con los gradientes. Estos crecen y crecen hasta que las capas tienen unos pesos absolutamente enormes. A esto se le conoce como el problema de los gradientes que explotan.
+Por otro lado, puede suceder lo contrario. Los gradientes crecen exponencialmente hasta que las capas tienen unos pesos absolutamente enormes. A esto se le conoce como el problema de la **explosión de gradientes** (exploding gradients).
 
-Como se pudo demostrar en un paper academico [ https://homl.info/47 ], el problema con la inestabilidad de los pesos era una combinación entre la función sigmoide de activación y el metodo de inicialización. En el caso de la función sigmoide, cuando las entradas son muy grandes ($[ - \infty, \infty ]$) la funcion de activación tiende a saturar $[ 0, 1 ]$, con una derivada que tiende a $0$, con lo que la backprop no tiene casi gradiente que propagar.
+En un paper académico [[47]](https://homl.info/47), se demostró que el problema con la inestabilidad de los pesos era una combinación entre la función sigmoide de activación y el método de inicialización de pesos.
+
+---
 
 ### Inicialización de Glorot e Inicialización de He
 
-En el paper anterior, Glorot y Bengio proponen un método para aliviar significativamente la inestabilidad de los gradientes señalando que la señal tiene que viajar correctamente en ambas direcciones: hacia delante cuando se hacen predicciones y hacia detras cuando se propagan los gradientes. Entonces, los autores explican que se necesita que la varianza de las salidas y entradas sean iguales, asi como que los gradientes tienen que tener una varianza igual antes y despues de propagarse. Esto no es posible si no existen las mismas neuronas de entrada y salida en una capa (fan-in y fan-out). La estrategia que propusieron fue inicializar los pesos de manera que $\large fan_{avg} = (fan_{in} + fan_{out}) / 2$:
+En el paper anterior, Glorot y Bengio proponen un método para aliviar significativamente la inestabilidad de los gradientes. La idea es que la señal tiene que viajar correctamente en ambas direcciones (forward y backward).
 
+**Inicialización de Glorot** (también llamada Xavier):
 - Distribución normal con media 0 y varianza $\large \sigma ^2 = \frac{1}{fan_{avg}}$
+- Distribución uniforme entre $\large [ -r, r ]$ con $r = \sqrt{\frac{3}{fan_{avg}}}$
 
-- Distribución uniforme entre $\large [ -r, r, ]$ con $r = \sqrt{\frac{3}{fan_{avg}}}$
+Por otro lado, la estrategia de inicialización propuesta para la función ReLU de activación son las **Inicializaciones de He** (o Kaiming), que escalan mejor con redes profundas.
 
-Por otro lado, la estrategia de inicialización propuesta para la función ReLU de activación son las Inicializaciones de He o Kaiming
+---
 
 ### Mejores funciones de activación
 
-Aun que la función de activación sigmoide es parecida a la de nuestras neuronas, se ha demostrado que la ReLU es mucho mejor para las DDNN, debido a su fácil cálculo y que no satura los valores por muy altos/bajos que sean. Esta última función si bien es mejor, no es perfecta, ya que sufre de un problema por el cual algunas neuronas "mueren" (dejan de calcular). Esta "muerte" hace que los pesos se trastoquen tanto que el input de la función será siempre negativo.
+Aunque la función de activación sigmoide es parecida a la de nuestras neuronas biológicas, se ha demostrado que la ReLU es mucho mejor para las DNN, debido a su fácil cálculo y a que no satura los valores en comparación con la sigmoide.
 
-Para resolver este problema hay variaciones de la funcion:
+Sin embargo, la ReLU presenta el problema de las "neuronas muertas": si un neurón recibe un valor negativo, siempre devolverá 0 y sus pesos nunca se actualizarán.
+
+Para resolver este problema hay variaciones de la función:
 
 #### Leaky ReLU
 
-Esta función esta caracterizada por $LeakyReLU_{\alpha}(z) = max(az, z)$, donde el hiperparametro $\alpha$ define cuanto "filtra" la función, preparando una pendiente en la función con el que dar valores a las entradas negativas.
+Esta función está caracterizada por $LeakyReLU_{\alpha}(z) = max(\alpha z, z)$, donde el hiperparámetro $\alpha$ define cuanto "filtra" la función, creando una pendiente suave que permite que los gradientes negativos fluyan.
 
-En un paper de 2015 [ https://homl.info/49 ] se comparan variantes de ReLU y se obtiene un mejor desempeño en todas, sobre la función original. En este experimento se explica que para Leaky ReLU funciona incluso mejor pendientes altas que mas bajas (0.2 vs 0.01). Por otro lado se evalua RReLU (random ReLU), en el que se elige $\alpha$ de manera aleatoria en un rango dentro del entrenamiento y se ajusta a la media para el testeo. Por ultimo se estudia PReLU (parametric leaky ReLU), donde el $\alpha$ se convierte en un parametro mas del entrenamiento y es sujeto a backprop. Este último es capaz de tasas de acierto muy buenas en grandes conjuntos de imagenes, pero cuando la información escasea tiende a hacer overfitting
+En un paper de 2015 [[49]](https://homl.info/49) se comparan variantes de ReLU y se obtiene un mejor desempeño en todas, sobre la función original. Para Leaky ReLU se suele usar $\alpha = 0.01$.
 
 #### ELU y SELU
 
-En un paper de 2015 [ https://homl.info/50 ] se planteo una función de activación que superaba el desempeño de todas las variantes de ReLU, reduciendo tiempo de entrenamiento y mejorando las predicciones de la red neuronal en el conjunto de prueba. La ecuación que describe la Exponential Linear Unit (ELU) es la siguiente:
+En un paper de 2015 [[50]](https://homl.info/50) se plantea una función de activación que superaba el desempeño de todas las variantes de ReLU, reduciendo tiempo de entrenamiento y mejorando las predicciones de test.
 
 $$
 \text{ELU}_{\alpha}(z) = 
@@ -44,83 +50,82 @@ z & \text{if } z \geq 0
 \end{cases}
 $$
 
-Aun que el resultado de esta función de activación sea parecido al de la ReLU, tiene varios puntos en los que se diferencian:
+Aunque el resultado de esta función sea parecido al de la ReLU, tiene varios puntos en los que se diferencian:
 
-- Devuelve valores negativos para $z<0$, lo cual alivia el problema del desvanecimiento de gradientes. El hiperparametro $\alpha$ define los opuesto al valor que devuelve la función cuando $z$ es un número negativo grande.
-
+- Devuelve valores negativos para $z<0$, lo cual alivia el problema del desvanecimiento de gradientes. El hiperparámetro $\alpha$ define el valor negativo que devuelve la función cuando $z$ es negativo.
 - Evita el problema de neuronas muertas, ya que tiene un valor $\neq 0$ para $z<0$
+- Si $\alpha = 1$, la función es suave en cualquier punto, lo cual ayuda a acelerar el cálculo del descenso de gradiente
 
-- Si $\alpha = 1$, la funcion es suave en cualquier punto, lo cual ayuda a acelerar el calculo del descenso de gradiente
+Para utilizar ELU en PyTorch solo hay que utilizar el módulo `nn.ELU` junto a la inicialización Kaiming.
 
-Para utilizar ELU en PyTorch solo hay que utilizar el modulo nn.ELU junto a la inicialización Kaiming
+En 2017 se planteó una variación de ELU, **SELU** (scaled ELU) en un paper [[selu]](https://homl.info/selu). En dicho paper se demostró que si se implementa una red neuronal de capas densas con SELU, la red se auto-normaliza automáticamente.
 
-Por otro lado, en 2017 se planteó una variación de ELU, SELU (scaled ELU) en un paper [ https://homl.info/selu ]. En dicho paper se demostro que si se implementa una red neuronal de capas densas y si todas las capas utilizan SELU, la red normalizará por si misma las salidas con una media de 0 y una desviación estandard de 1, lo cual contrarresta completamente la explosión/desvanecimiento de los gradiente.
+Para utilizarlo se ha de llamar al módulo `nn.SELU` con las siguientes restricciones:
 
-Para utilizarlo se ha de llamar al modulo nn.SELU, con las siguientes restricciones:
+- Las entradas deben estar normalizadas, con una media de 0 y desviación estándar 1
+- Todos los pesos de las capas ocultas tienen que estar inicializadas con el método de LeCun
+- La auto normalización no está garantizada con arquitecturas que no sean MLPs llanas
+- No se pueden utilizar técnicas de regularización como ℓ1 o ℓ2, normalización de lotes, capas, max o dropout
 
-- Las entradas deben estar normalizadas, con una media de 0 y desviación 1
+#### GELU, Swish, SwiGLU, Mish y ReLU²
 
-- Todos los pesos de las capas ocultas tienen que estar inicializadas con el metodo de LeCun
+La función **GELU** (Gaussian Error Linear Unit) fue presentada en un paper de 2016 [[gelu]](https://homl.info/gelu) y se puede considerar una variante suave de ReLU. Se define con la siguiente fórmula:
 
-- La auto normalización no esta garantizada con arquitecturas que no sean MLPs llanas
-
-- No se pueden utilizar tecnicas de regularización como ℓ1 o ℓ2, normalización de lotes, capas, max o dropout
-
-#### GELU, Swish, SwiGLU, Mish, y RELU²
-
-La función GELU(Gaussian Error Linear Unit) fue presentada en un paper de 2016 [ https://homl.info/gelu ] y se puede considerar una variante suave de ReLU. Se define con la siguiente fórmula:
 $$
 \large
 GELU(z) = z\Phi(z)
 $$
 
-Siendo $\Phi$ una función de distribución acumilativa Gaussiana $(CDF): \Phi(z)$, que corresponde a la probabilidad de que un valor muestreado al azar de una distribución normal con mediana 0 y varianza 1 es menor que z.
+Siendo $\Phi$ una función de distribución acumulativa Gaussiana (CDF): $\Phi(z)$, que corresponde a la probabilidad de que un valor muestreado al azar de una distribución normal con media 0 y varianza 1 sea menor que $z$.
 
-Swish nace como una variación de GELU en un paper de 2017 [ https://homl.info/swish ], una aproximación de la función de activación para aligerar el tiempo de computación de los gradientes. Esta se ve definida como:
+**Swish** nace como una variación de GELU en un paper de 2017 [[swish]](https://homl.info/swish), una aproximación de la función de activación para aligerar el tiempo de computación de los gradientes:
 
 $$
 \large
 Swish(z)= z\sigma(z)
 $$
 
-En el mismo paper se presenta la generalización de Swish añadiedo un parametro $\beta$ para escalar la entrada de la función de activacion:
+En el mismo paper se presenta la generalización de Swish añadiendo un parámetro $\beta$ para escalar la entrada de la función de activación:
 
 $$
 \large
 Swish_{\beta}(z)= z\sigma(\beta z)
 $$
 
-Este parametro puede ser entrenable, normalmente suele tener un único parametro para el modelo entero o, como mucho, uno por cada capa para mantener el modelo eficiente y evitar el overfitting
+Este parámetro puede ser entrenable, normalmente suele tener un único parámetro para el modelo entero o, como mucho, uno por cada capa para mantener el modelo eficiente y evitar el overfitting.
 
-Una variante popular de Swish es SwiGLU [ https://homl.info/swiglu ], en la cual las entradas pasan por la función de activación Swish y en paralelo por una capa lineal para, finalmente, multiplicar los resultados:
+Una variante popular de Swish es **SwiGLU** [[swiglu]](https://homl.info/swiglu), en la cual las entradas pasan por la función de activación Swish y en paralelo por una capa lineal para, finalmente, multiplicarse elemento a elemento:
 
 $$
 \large
 SwiGLU(z) = Swish_{\beta}(z) ⊗ Linear(z)
 $$
 
-Otra función de activación parecida a GELU es Mish, planteada en 2019 [ https://homl.info/mish ]. Se define de la siguiente manera:
+Otra función de activación parecida a GELU es **Mish**, planteada en 2019 [[mish]](https://homl.info/mish). Se define de la siguiente manera:
 
 $$
 \large
-mish(z) = ztanh(sofplus(z))
+mish(z) = z\tanh(softplus(z))
 $$
 
 donde
+
 $$
 \large
-sofplus(z) = log(1 + exp(z))
+softplus(z) = \log(1 + \exp(z))
 $$
 
-Asi como GELU y Swish, es una variante de ReLU suave, no convexa y no monotona
+Así como GELU y Swish, es una variante de ReLU suave, no convexa y no monótona.
+
+---
 
 ### Normalización de lotes
 
-Si bien la inicialización de Kaiming conjuntamente con ReLU evita los problemas anteriores en el principio del entrenamiento, eso no quiere decir que no vaya a volver a lo largo del proceso
+Si bien la inicialización de Kaiming conjuntamente con ReLU evita los problemas anteriores al principio del entrenamiento, eso no quiere decir que no vaya a volver a lo largo del proceso.
 
-Dado lo anterior, en un paper de 2015 [ https://homl.info/51 ] se planteo la normalización de lotes (BN), la cual consistia en añadir una operación antes/despues del cálculo de la función de activación, normalizando y centrando en 0 cada una de las entradas para despues escalar y mover el resultado utilizando dos vectores de parameotrs por capa; uno para escalado, otro para el movimiento.
+Dado lo anterior, en un paper de 2015 [[51]](https://homl.info/51) se plantea la **normalización de lotes** (Batch Normalization, BN), la cual consiste en añadir una operación antes o después del cálculo de la función de activación para normalizar las entradas de cada capa.
 
-Con el objetivo de hacer lo anterior, el algoritmo necesita aproximar la media y la desviación de cada entrada, evaluando estas variables sobre el lote actual, de la siguiente manera:
+Con el objetivo de hacer lo anterior, el algoritmo necesita aproximar la media y la desviación estándar de cada entrada, evaluando estas variables sobre el lote actual, de la siguiente manera:
 
 $$
 \large
@@ -133,97 +138,114 @@ $$
 $$
 
 Siendo, en este algoritmo:
-- $\mu_B$: el vector con la media de las entradas sobre el lote $\beta$
-- $m_B$: el numero de instancias en el vector
+- $\mu_B$: el vector con la media de las entradas sobre el lote $B$
+- $m_B$: el número de instancias en el lote
 - $x^{(i)}$: el vector de entrada del lote para la instancia $i$
-- $\sigma_B^2$: el vector con las desviaciones sobre el lote $\beta$
+- $\sigma_B^2$: el vector con las desviaciones sobre el lote $B$
 - $\widehat{\mathbf{x}}^{(i)}$: el vector de entradas normalizado y centrado en $0$ para la instancia $i$
-- $\varepsilon$: termino suavizante, para evitar las divisiones por $0$ y que los gradientes no exploten
-- $\gamma$: el vector del parametro de escalado de la salida para la capa
-- $⊗$: representa la multiplicación, elemento a elemento
-- $\beta$: el movimiento del vector de parametros de salida
-- $\mathbf{z}^{(i)}$: es la salida de la operacion BN (la version de la entrada rescalada y movida)
+- $\varepsilon$: término suavizante, para evitar divisiones por $0$ y que los gradientes no exploten
+- $\gamma$: el vector del parámetro de escalado de la salida para la capa
+- $⊗$: representa la multiplicación elemento a elemento
+- $\beta$: el movimiento del vector de parámetros de salida
+- $\mathbf{z}^{(i)}$: la salida de la operación BN (la versión de la entrada rescalada y movida)
 
-En definitiva, hay 4 vectores de parametros aprendidos en cada capa BN:
-- Aprendidos por backprop:
-    - $\gamma$
-    - $\beta$
-- Aproximados utilizando media exponencial movil:
-    - $\mu$
-    - $\sigma^2$
+En definitiva, hay 4 vectores de parámetros aprendidos en cada capa BN:
+- **Aprendidos por backpropagation:**
+  - $\gamma$
+  - $\beta$
+- **Aproximados utilizando media exponencial móvil:**
+  - $\mu$
+  - $\sigma^2$
 
-Es necesario resaltar que los dos últimos vectores de parámetros se aprenden en el entrenamiento, pero solo son usados una vez este acaba. En el momento en el que utilizamos model.eval(), estos cambian por $\mu \rightarrow \mu_B$ y $\sigma^2 \rightarrow \sigma_B^2$
+Es necesario resaltar que los dos últimos vectores de parámetros se aprenden en el entrenamiento, pero solo son usados una vez este acaba. En el momento en el que utilizamos `model.eval()`, estos parámetros son fijos.
 
-Estos avances permitieron grandes mejoras en los modelos de clasificación de imágenes de los investigadores; se evito en gran medida el desvanecimiento de gradientes, hasta el punto de poder utilizar funciones de activación que saturan, ademas de ser menos sensibles a la inicialización de pesos e incluso pudieron utilizar LR mas altos. Finalmente, esta técnica actua tambien como regularizador, reduciendo la necesidad de otras técnicas.
+Estos avances permitieron grandes mejoras en los modelos de clasificación de imágenes. Se evitó en gran medida el desvanecimiento de gradientes, hasta el punto de poder utilizar redes muchísimo más profundas sin que colapsaran.
 
-Esta estratégia añade complejidad al modelo, volviéndolo mas lento en la inferencia, aun que es posible fusionar las capas BN con las capas previas despues de entrenar, pudiendo evitar esta penalización de tiempo de ejecución.
+Esta estrategia añade complejidad al modelo, volviéndolo más lento en la inferencia. Sin embargo, es posible fusionar las capas BN con las capas previas después de entrenar, pudiendo evitar esta penalización.
+
+---
 
 ### Normalización de capas
 
-La normalización de capas (LN) es parecida a la de lotes, pero en vez de normalizar a lo largo de la dimension del lote, lo hace en la dimensión de las característcias. Así se presentó en el paper de 2016 [ https://homl.info/layernorm  ].
+La **normalización de capas** (Layer Normalization, LN) es parecida a la de lotes, pero en vez de normalizar a lo largo de la dimensión del lote, lo hace en la dimensión de las características. Así se presentó en un paper de 2016 [[ln]](https://homl.info/ln).
 
-Una de las ventajas que tiene LN es que puede calcular en el momento las estadísticas independientemente de cada instancia, con lo que se comporta igual en entrenamiento como en test. Este método también aprende una escala y un offset para cada característica de entrada. 
+Una de las ventajas que tiene LN es que puede calcular en el momento las estadísticas independientemente de cada instancia, con lo que se comporta igual en entrenamiento como en test. Este método es especialmente útil en arquitecturas como Transformers.
+
+---
 
 ### Recorte de gradiente
 
-El recorte de gradiente es una técnica que se utiliza para evitar la explosión de gradientes. Se basa en definir un umbral que no pueden sobrepasar en el momento de backrpop. Esta técnica se suele utilizar en las redes neuronales recurrentes, ya que la normalización de lotes es complicada.
+El **recorte de gradiente** (Gradient Clipping) es una técnica que se utiliza para evitar la explosión de gradientes. Se basa en definir un umbral que no pueden sobrepasar en el momento de backpropagation. Esta técnica se suele usar en redes recurrentes y en algunos casos especiales.
+
+---
 
 ## Reusar capas preentrenadas
 
-Normalmente no es la mejor idea entrenar una red profunda desde cero sin buscar otra que ya intente resolver el mismo problema, ya que en el caso de encontrarla se pueden reusar la mayoria de sus capas, exceptuando las de arriba del todo. A esta técnica se le conoce como "transfer learning" y no solo acelerará el entrenamiento considerablemente, si no que necesitará menos información de entrenamiento.
+Normalmente no es la mejor idea entrenar una red profunda desde cero sin buscar otra que ya intente resolver el mismo problema. En el caso de encontrarla, se pueden reusar la mayoría de sus capas, especialmente las inferiores, que suelen aprender características generales.
 
-En el caso de tener acceso a una red profunda entrenada para clasificar imagenes en varias clases, incluidas imagenes de coches, y tu idea es implementar una red que clasifique diferentes tipos de coches. Ya que estas tareas son similares, podemos intentar reutilizar partes de la primera red para entrenar la nueva. Una regla general util es que cuanto mas se parezcan las tareas a resolver, mas cantidad de capas preentrenadas se podrán utilizar, aun que la capa de salida habra que reemplazarla y las capas más altas también, ya que son las que estan entrenadas en los detalles más finos. 
+En el caso de tener acceso a una red profunda entrenada para clasificar imágenes en varias clases, incluidas imágenes de coches, y tu idea es implementar una red que clasifique diferentes tipos de coches, puedes reusar todas las capas excepto la última capa (la que clasifica), que habrá que entrenar desde cero.
 
-> Cabe destacar que si la entrada del nuevo modelo no es del mismo tamaño, será necesario aplicar un paso previo de preprocesado para reescalar ese tamaño.Para poner un ejemplo, si la red neuronal está entrenada con imágenes de teléfonos móviles, servirá para hacer inferencia sobre otras imágenes tomadas con teléfonos, pero no para aquellas adquiridas con satélites.
+> **Nota:** Si la entrada del nuevo modelo no es del mismo tamaño, será necesario aplicar un paso previo de preprocesado para reescalar ese tamaño. Por ejemplo, si la red neuronal preentrenada espera imágenes de 224×224 pero tu nuevo dataset tiene imágenes de 128×128, habrá que reescalarlas.
 
-El objetivo es encontrar el número correcto de capas a reutilizar. Se puede empezar "congelando" (requires_grad=False) las capas para no modificarlas y entrenar el modelo para ver su desempeño. Mas tarde se pueden descongelar una o dos y volver a entrenar para ver si mejora. En general, cuanta mas información tienes, mas capas puedes descongelar, aun que el objetivo es reutilizar capas para acelerar el proceso de entrenamiento.
+El objetivo es encontrar el número correcto de capas a reusar. Se puede empezar "congelando" (`requires_grad=False`) las capas para no modificarlas y entrenar el modelo para ver su desempeño. Si el modelo funciona bien, se pueden descongelar las últimas capas y entrenarlas también.
+
+---
 
 ### Preentrenamiento no supervisado
 
-En el caso de tener una tarea compleja, no disponer de un modelo preentrenado y no tener mucha información etiquetada, no poder obtener mas, existe la posibilidad de aplicar el preentrenamiento no supervisado. Si existe un conjunto abundante de información no etiquetada, se puede utilizar para entrenar un modelo no supervisado (así como un autoencoder) y más tarde reutilizar las capas inferiores de este modelo, añadir una capa de salida y hacer fine-tune en la red resultante utilizando información ya etiquetada
+En el caso de tener una tarea compleja, no disponer de un modelo preentrenado y no tener mucha información etiquetada ni poder obtener más, existe la posibilidad de aplicar el **preentrenamiento no supervisado**.
 
-Actualmente se suele entrenar el modelo completo sobre la información no etiquetada de una sentada, en vez de ir entrenando capa por capa, congelando las anteriores para entrenar nuevas, ademas de utilizar modelos como los autoencoders o modelos de difusion más que las maquinas de Boltzmann
+Actualmente se suele entrenar el modelo completo sobre la información no etiquetada de una sola tirada, en vez de ir entrenando capa por capa congelando las anteriores para entrenar nuevas. Además, esta estrategia se ha vuelto menos relevante con el surgimiento de los Transformers y modelos de lenguaje grandes.
+
+---
 
 ### Preentrenamiento en una tarea auxiliar
 
-Una última opcion es entrenar una primera red neuronal en una tarea auxiliar, de la cual se puede obtener o generar facilmente información etiqutada, para despues reutilizar las capas inferiores para la tarea para la cual quieres implementar un modelo. Normalmente las capas inferiores del primer modelo aprenderan a reconocer patrones que serán útiles en la segunda red neuronal.
+Una última opción es entrenar una primera red neuronal en una **tarea auxiliar**, de la cual se puede obtener o generar fácilmente información etiquetada, para después reusar las capas inferiores en la tarea real.
 
-Por ejemplo:
-> Se quiere implementar un sistema de reconocimiento de rostros, únicamente con 2 o 3 imágenes por individuo. Ya que obtener cientos de imágenes por persona no es plausible, se podría utilizar un conjunto de imágenes público (como VGGFace2) con millones de rostros y entrenar una primera red neuronal con estas imágenes, para detectar la misma persona en dos retratos diferentes. Este preentrenamiento será muy útil para más tarde reutilizar las capas del primer modelo, que ya hayan aprendido a reconocer patrones, y entrenar este segundo modelo con la información escasa.
+**Ejemplo:**
+> Se quiere implementar un sistema de reconocimiento de rostros, únicamente con 2 o 3 imágenes por individuo. Ya que obtener cientos de imágenes por persona no es plausible, se podría utilizar un dataset público con muchas imágenes de rostros para preentrenar el modelo, y luego fine-tuning con el dataset pequeño de la tarea real.
 
-## Optimizadores más rapidos
+---
 
-Hasta ahora hemos visto 4 métodos de acelerar el entrenamiento de las redes neuronales profundas:
-- Estratégias de inicialización
+## Optimizadores más rápidos
+
+Hasta ahora hemos visto varios métodos para acelerar el entrenamiento de las redes neuronales profundas:
+- Estrategias de inicialización
 - Funciones de activación
 - Normalización de lotes y capas
 - Reutilización de capas
 
-Ahora veremos los varios optimizadores mas allá del optimizador de descenso de gradiente normal.
+Ahora veremos varios optimizadores más allá del optimizador de descenso de gradiente normal.
+
+---
 
 ### Momentum
 
-La idea de la optimización del momentum presentada en un paper de 1964 [ https://homl.info/54 ] se basa en afectar el gradiente calculado con una variable dentro del vector de momentum $m$ multiplicado por LR. Hasta ahora el descenso de gradiente se basaba en actualizar los pesos restando directamente el gradiente de la funcion de coste respecto a los pesos multiplicada por el LR de la siguiente manera:
+La idea de la **optimización del momentum** presentada en un paper de 1964 [[54]](https://homl.info/54) se basa en afectar el gradiente calculado con una variable dentro del vector de momentum $m$ multiplicada por un factor $\beta$ (típicamente 0.9):
+
 $$
 \large
 \theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta)
 $$
 
-En otras palabras, en la optimización del momentum, el gradiente es usado como una fuerza de aceleración, no como una velocidad, con lo que para evitar que aumente indefinidamente, se implementa un "mecanismo de rozamiento" en forma de hiperparametro $\beta$ conocido como coeficiente de momentum con valores entre $[0,1]$ (0 máxima fricción, 1 sin fricción). Con lo que la ecuación que define este momentum es la siguiente:
+En otras palabras, en la optimización del momentum, el gradiente es usado como una fuerza de aceleración, no como una velocidad. Para evitar que aumente indefinidamente, se implementa un factor de fricción:
 
 $$
 \large
 \begin{align}
-1.  \quad & m \leftarrow \beta m - \eta \nabla_{\theta}J(\theta) \\ 
-2.  \quad & \theta \leftarrow \theta m 
+1. \quad & m \leftarrow \beta m - \eta \nabla_{\theta}J(\theta) \\ 
+2. \quad & \theta \leftarrow \theta + m 
 \end{align}
 $$
 
-Ya que en la práctica los gradientes no son constantes, puede no apreciarse tanto la aceleración del entrenamiento, pero esta optimización escapa mucho antes de las mesetas que el descenso de gradiente normal, además de ayudar a evitar los máximos locales.
+Ya que en la práctica los gradientes no son constantes, puede no apreciarse tanto la aceleración del entrenamiento, pero esta optimización escapa mucho antes de las mesetas que el descenso de gradiente estándar.
+
+---
 
 ### Gradiente acelerado de Nesterov
 
-Yurii Nesterov propuso en su paper de 1983 [ https://homl.info/55 ] una variante a la optimización de momentum, el gradiente acelerado de Nesterov (NAG), la cual mide el gradiente de la función de coste mas alla de la dirección del momentum, en $\theta+\beta m$, quedando definida de la siguiente manera:
+Yurii Nesterov propuso en su paper de 1983 [[55]](https://homl.info/55) una variante a la optimización de momentum, el **gradiente acelerado de Nesterov** (NAG, Nesterov Accelerated Gradient), la cual mide el gradiente de la función de pérdida evaluada un paso adelante en la dirección del momentum:
 
 $$
 \large
@@ -233,47 +255,53 @@ $$
 \end{align}
 $$
 
-Esta modificación funciona ya que normalmente el gradiente apuntara en la dirección correcta, con lo que será aún más correcto usar el gradiente medido mas alla en esa dirección, en vez del gradiente en la posición original.
+Esta modificación funciona ya que normalmente el gradiente apuntará en la dirección correcta, con lo que será aún más correcto usar el gradiente medido más allá en esa dirección, en vez del gradiente en la posición actual.
+
+---
 
 ### AdaGrad
 
-Considerando el problema del cuenco alargado en el que el descenso de gradiente comienza yendo rapidamente por la pendiente mas acentuada, aun que no sea la que conduzca al mínimo global, para despues moverse lentamente valle abajo. El algoritmo Adagrad [ https://homl.info/56 ] es capaz de corregir la dirección con el objetivo de moverse hacia el punto óptimo global antes, con una definición como la siguiente:
+Considerando el problema del "cuenco alargado" en el que el descenso de gradiente comienza yendo rápidamente por la pendiente más acentuada, aunque no sea la que conduzca al mínimo global, para después ralentizarse al acercarse, el algoritmo **AdaGrad** intenta adaptarse a la geometría de la función de pérdida:
 
 $$
 \large
 \begin{align}
-1. & \quad s \leftarrow s + \nabla_{\theta}J(\theta) ⊗ \nabla_{\theta}J(\theta)\\ 
-2. & \quad \theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta) ⊘ \sqrt{s + \epsilon}
+1. & \quad s \leftarrow s + \nabla_{\theta}J(\theta) \otimes \nabla_{\theta}J(\theta)\\ 
+2. & \quad \theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta) \oslash \sqrt{s + \epsilon}
 \end{align}
 $$
 
 > El símbolo $⊗$ representa multiplicación elemento por elemento, mientras que $⊘$ representa división elemento por elemento
 
-El primer paso del algorítmo acumula el cuadrado de los gradientes en el vector s, lo cual es equivalente a calcular $s_i \leftarrow s_i + (\frac{\partial j(\theta)}{\partial \theta_i})²$ para cada elemento $s_i$ del vector s.
+El primer paso del algoritmo acumula el cuadrado de los gradientes en el vector s, lo cual es equivalente a calcular $s_i \leftarrow s_i + (\frac{\partial J(\theta)}{\partial \theta_i})^2$ para cada parámetro $i$.
 
-El segundo paso es casi identico al descenso de gradiente, con una diferencia notable ya que el vector de gradientes es escalado por un factor $\sqrt{s + \epsilon}$, siendo $\epsilon$ un factor para evitar las divisiones por 0. Esta forma vectorial es equivalente a calcular para todos los parametros $\theta_i$ lo siguiente: $\large \theta_i \leftarrow \theta_i  \frac{\frac{\eta \partial j(\theta)}{\partial\theta_i}}{\sqrt{s }+ \epsilon}$
+El segundo paso es casi idéntico al descenso de gradiente, con una diferencia notable: el vector de gradientes es escalado por un factor $\sqrt{s + \epsilon}$, siendo $\epsilon$ un factor pequeño para evitar divisiones por cero.
 
-Este algoritmo hace decaer el LR, pero lo hace mucho más rapido para dimensiones empinadas que para cuestas suaves, lo que se conoce como aprendizaje adaptativo. 
+Este algoritmo hace decaer el learning rate, pero lo hace mucho más rápido para dimensiones empinadas que para cuestas suaves, lo que se conoce como **aprendizaje adaptativo**.
 
-Por otro lado, si bien funciona correctamente para problemas cuadraticos, puede parar muy pronto el entrenamiento debido a que escala tanto el LR que es incapaz de llegar al punto óptimo global
+Sin embargo, si bien funciona correctamente para problemas cuadráticos, puede parar muy pronto el entrenamiento debido a que escala tanto el learning rate que es incapaz de llegar al punto óptimo global.
+
+---
 
 ### RMSProp
 
-RMSProp es una variante de adagrad que evita que el entrenamiento pare antes de converger dado a la desaparición del LR acumulando solo los gradientes de las iteraciones mas recientes, en vez de todos desde el inicio del entrenamiento. Para esto se utiliza la desintegración exponencial en el primer paso:
+**RMSProp** es una variante de AdaGrad que evita que el entrenamiento pare antes de converger por la desaparición del learning rate, acumulando solo los gradientes de las iteraciones más recientes, en vez de todos los históricos:
 
 $$
 \large
 \begin{align}
-1. & \quad  s \leftarrow \alpha s + (1 - \alpha) \nabla_{\theta}J(\theta) ⊗ \nabla_{\theta}J(\theta)\\ 
-2. & \quad \theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta) ⊘ \sqrt{s + \epsilon}
+1. & \quad  s \leftarrow \alpha s + (1 - \alpha) \nabla_{\theta}J(\theta) \otimes \nabla_{\theta}J(\theta)\\ 
+2. & \quad \theta \leftarrow \theta - \eta \nabla_{\theta}J(\theta) \oslash \sqrt{s + \epsilon}
 \end{align}
 $$
 
-> Siendo $\alpha$ el hiperparametro del ratio de desintegración, normalmente definido a 0.9
+> Siendo $\alpha$ el hiperparámetro del ratio de desintegración, normalmente definido a 0.9
+
+---
 
 ### Adam
 
-Adam, que significa estimacion de momento adaptativa, combina las ideas de la optimización del momentm y el algoritmo RMSProp. Este optimizador tiene en cuenta la media de la descomposición exponencial de gradientes (optimización de momentum), así como lleva la cuenta de las medias de desintegración exponencial de gradientes cuadrados pasados. Estas son estimaciones de la media sin centrar (primer momentum) y la varianza de los gradientes (segundo momentum):
+**Adam** (Adaptive Moment Estimation) combina las ideas de la optimización del momentum y el algoritmo RMSProp. Este optimizador tiene en cuenta la media móvil exponencial de los gradientes y la media móvil exponencial de los cuadrados de los gradientes:
 
 $$
 \large
@@ -286,101 +314,120 @@ $$
 \end{align}
 $$
 
-> Siendo $t$ el número de la iteración, $\beta_1$ sería el momentum y $\beta_2$ correspondria al ratio de desintegración $\alpha$ de RMSProp
+> Siendo $t$ el número de la iteración, $\beta_1$ sería el momentum y $\beta_2$ correspondría al ratio de desintegración $\alpha$ de RMSProp
 
-Mientras que los pasos 1, 2 y 5 son muys similares a los de ADAM y RMSProp, los pasos 3 y 4 son definiciones de los valores para $m$ y $s$, ya que al inicializarse a $0$ estarían sesgados por ese valor al principio del entrenamiento
+Mientras que los pasos 1, 2 y 5 son muy similares a los de Momentum y RMSProp, los pasos 3 y 4 son correcciones de sesgo para los valores de $m$ y $s$. Ya que al inicializarse a $0$ estarían sesgados estrepitosamente en las primeras iteraciones, estas correcciones los dessesan.
 
 #### AdaMax
 
-Adam acumula los cuadrados de los gradientes en $s$, como hemos visto antes, además de escalar por debajo las actualizaciones de los parametros por la raiz de $s$, es decir, Adam escala las actualizaciones por la norma $l_2$ (la raíz cuadrada de la suma de los cuadrados)
+Adam acumula los cuadrados de los gradientes en $s$, como hemos visto antes, además de escalar por debajo las actualizaciones de los parámetros por la raíz de $s$. Es decir, Adam escala las actualizaciones por la norma $l_2$ de los gradientes históricos.
 
-Por otro lado, AdaMax, introducido en el mismo paper que Adam, reemplaza $l_2$ por $l_{\infty}$, en concreto reemplaza el paso 2 del algoritmo con 
+Por otro lado, **AdaMax**, introducido en el mismo paper que Adam, reemplaza $l_2$ por $l_{\infty}$. En concreto, reemplaza el paso 2 del algoritmo con:
+
 $$
 \large
-s \leftarrow max(\beta_2 s, abs (\nabla_{\boldsymbol{\theta}} J(\boldsymbol{\theta})))
+s \leftarrow \max(\beta_2 s, |\nabla_{\boldsymbol{\theta}} J(\boldsymbol{\theta})|)
 $$
+
 elimina el paso 4 y en el paso 5 escala la actualización de gradientes por $s$; el máximo del valor absoluto de los gradientes desintegrados en el tiempo.
 
-En definitiva, esta variante puede hacer que el algorítmo sea más estable que Adam, pero depende bastante del conjunto de información y en general Adam tiene un mejor desempeño.
+En definitiva, esta variante puede hacer que el algoritmo sea más estable que Adam, pero depende bastante del conjunto de datos y en general Adam tiene un mejor desempeño.
 
 #### NAdam
 
-Esta variante es la optimización de Adam con el truco de Nesterov añadido, con lo que llegará a la convergencía más rápido que el algorítmo de Adam base.
+Esta variante es la optimización de Adam con el truco de Nesterov añadido, con lo que llegará a la convergencia más rápido que el algoritmo de Adam base.
 
 #### AdamW
 
-Esta es otra variante de Adam que integra la técnica de regularización de "desintegración de pesos". Esa reduce el tamaño de los pesos de los modelos en cada iteración multiplicandolos por un factor de desintegración
+**AdamW** es otra variante de Adam que integra la técnica de regularización de "desintegración de pesos" (weight decay). Esa reduce el tamaño de los pesos de los modelos en cada iteración multiplicándolos por un factor ligeramente menor que 1.
 
-### Conclusión 
+---
 
-Todas las técnicas que se han visto dependen de las Jacobianas, que miden la pendiente de la función de pérdida, aunque hay más algorítmos de optimización basados en las Hessianas, midiendo como cambianlas Jacobianas a lo largo de cada eje. El problema de las Hessianas es el coste computacional  y de espacio de memoria de las segundas derivadas parciales, ya que existen $n²$ por cada salida.
+### Conclusión
 
-Para acabar, se resume en la siguiente tabla todas las técnicas de optimización con una puntuación del 1-3 en su velocidad de convergencia y la calidad de esta
+Todas las técnicas que se han visto dependen de las Jacobianas, que miden la pendiente de la función de pérdida. Aunque hay más algoritmos de optimización basados en las Hessianas, midiendo la curvatura de la función de pérdida, estos suelen ser más complejos y costosos computacionalmente.
 
-| Class                                | Convergence speed (1-3) | Convergence quality (1-3) |
-|--------------------------------------|--------------------------|----------------------------|
-| SGD                                  | 1                        | 3                          |
-| SGD(momentum=...)                    | 2                        | 3                          |
-| SGD(momentum=..., nesterov=True)     | 2                        | 3                          |
-| Adagrad                              | 2                        | 1 *(stops too early)*      |
-| RMSprop                              | 2                        | 2 o 3                      |
-| Adam                                 | 2                        | 2 o 3                      |
-| AdaMax                               | 2                        | 2 o 3                      |
-| NAdam                                | 2                        | 2 o 3                      |
-| AdamW                                | 2                        | 2 o 3                      |
+Para acabar, se resume en la siguiente tabla todas las técnicas de optimización con una puntuación del 1-3 en su velocidad de convergencia y la calidad de esta:
+
+| Optimizador | Velocidad de convergencia (1-3) | Calidad de convergencia (1-3) |
+|---|---|---|
+| SGD | 1 | 3 |
+| SGD (momentum=...) | 2 | 3 |
+| SGD (momentum=..., nesterov=True) | 2 | 3 |
+| AdaGrad | 2 | 1 *(stops too early)* |
+| RMSprop | 2 | 2 o 3 |
+| Adam | 2 | 2 o 3 |
+| AdaMax | 2 | 2 o 3 |
+| NAdam | 2 | 2 o 3 |
+| AdamW | 2 | 2 o 3 |
+
+---
 
 ## Programación de la tasa de aprendizaje
 
-Encontrar un buen tasa de aprendizaje es importantisimo; si es muy bajo el entrenamiento del modelo será muy lento e incluso puede quedarse atascado en un punto óptimo local y si, por otra parte, es muy alto puede no llegar a converger nunca. En el caso de encontrar un buen LR puede resultar en un modelo que tenga buen desempeño pero con un entrenamiento demasiado lento con lo que, en general, es buena idea empezar con un LR alto para avanzar rápidamente e ir bajandolo a meduda que te vayas acercando al final del entrenamiento.
+Encontrar una buena tasa de aprendizaje es importantísimo. Si es muy baja el entrenamiento del modelo será muy lento e incluso puede quedarse atascado en un punto óptimo local. Si, por otra parte, es muy alta, el modelo puede divergir y nunca converger.
+
+---
 
 ### Programación exponencial
 
-En este método se aplica un factor $\gamma$ que multiplica en intervalos regulares a LR, con lo que despues de $n$ epocas, la tasa de aprendizaje será igual que el valor inicial por $\gamma^n$. Normalmente se busca tener un valor cercano a 1, como 0.9, con lo que despues de 10 iteraciones el LR será un 35% del valor original y despues de 20 solo un 12%.
+En este método se aplica un factor $\gamma$ que multiplica el learning rate en intervalos regulares, con lo que después de $n$ épocas, la tasa de aprendizaje será igual al valor inicial multiplicado por $\gamma^n$. Típicamente se usa $\gamma = 0.1$.
+
+---
 
 ### Recocido cosinusoidal
 
-En vez de disminuir la tasa de aprendizaje de manera exponencial, se puede utilizar la función de coseno para ir desde la tasa máxima $\large\eta_{max}$ hasta el valor mínimo $\large\eta_{min}$. Esto asegura que LR se mantiene relativamente alta hasta las etapas finales del entrenamiento, estando definido como:
+En vez de disminuir la tasa de aprendizaje de manera exponencial, se puede utilizar la función de coseno para ir desde la tasa máxima $\large\eta_{max}$ hasta el valor mínimo $\large\eta_{min}$ en cada ciclo:
 
 $$
 \large
-\eta_t = \eta_{min} + \frac{1}{2} (\eta_{max} - \eta_{min}) ( 1 + cos(\frac{t}{T_{max}}\pi))
+\eta_t = \eta_{min} + \frac{1}{2} (\eta_{max} - \eta_{min}) ( 1 + \cos(\frac{t}{T_{max}}\pi))
 $$
 
-Ya que es dificil definir tanto el número total de épocas como la tasa mínima, es preferible utilizar otros métodos como el siguiente
+Ya que es difícil definir tanto el número total de épocas como la tasa mínima, es preferible utilizar otros métodos como el siguiente.
+
+---
 
 ### Programador por desempeño
 
-También conocido como programación adaptativa, sigue una métrica en concreto durante el entrenamiento y, si esta métrica deja de mejorar por un tiempo, multiplica el LR por un factor predefinido. Si bien tiene varios hiperparámetros, normalmente los valores por defecto funcionan bien. Algunos a modificar son:
+También conocido como **programación adaptativa**, sigue una métrica en concreto durante el entrenamiento y, si esta métrica deja de mejorar por un tiempo, multiplica el learning rate por un factor predefinido.
 
-- **mode**: define si la métrica a seguir tiene que maximizarse (max) o minimizarse (min). Es decir, en max se reducirá la tasa si la métrica ha dejado de aumentar y en min se reducirá si la metrica ha dejado de disminuir
+En PyTorch existe `ReduceLROnPlateau` que implementa esta estrategia con los siguientes parámetros:
 
-- **patience**: define el número de iteraciones que espera para ver una mejora en la métrica a seguir antes de reducir LR
+- **mode**: define si la métrica a seguir tiene que maximizarse (`max`) o minimizarse (`min`). Es decir, en `max` se reducirá la tasa si la métrica ha dejado de aumentar y en `min` se reducirá si la métrica ha dejado de disminuir.
+- **patience**: define el número de iteraciones que espera para ver una mejora en la métrica a seguir antes de reducir el learning rate.
+- **factor**: define el valor por el que se reducirá el learning rate.
 
-- **factor**: define el valor por el que se reducirá LR.
+---
 
 ### Calentar la tasa de aprendizaje
 
-Los métodos anteriores empiezan todos con un valor de $\large\eta$ máximo, lo que puede llevar a que exploten los gradientes o que nunca se haga un avance significativo en algunos casos, con lo que aparece otro ángulo por el que acercarse a este problema, empezar un con un valor LR muy bajo e ir incrementándolo durante el entrenamiento hasta un valor máximo.
+Los métodos anteriores empiezan todos con un valor de $\large\eta$ máximo, lo que puede llevar a que exploten los gradientes o que nunca se haga un avance significativo en algunos casos. Por eso, es común "calentar" la tasa de aprendizaje al principio del entrenamiento.
 
-Una implementación de esta idea es un programador lineal, que aumente la tasa de forma lineal durante varias épocas, por ejemplo del 10-100% durante 3 iteraciones.
+Una implementación de esta idea es un programador lineal que aumente la tasa de forma lineal durante varias épocas, por ejemplo del 10-100% durante 3 iteraciones.
 
 En resumidas cuentas, normalmente siempre quieres "calentar" la tasa de aprendizaje al principio del entrenamiento, así como también quieres "enfriarla" cuando está acabando de entrenar.
 
-También hay otros casos, como cuando el descenso de gradiente se queda atascado en un valle o un punto óptimo local donde pueda quedarse durante todo el entrenamiento, en los que necesitemos modificar LR a mitad del bucle de entrenamiento. Para esto tenemos varias opciones:
+También hay otros casos, como cuando el descenso de gradiente se queda atascado en un valle o un punto óptimo local donde pueda quedarse durante todo el entrenamiento. En estos casos, necesitaremos modificar el learning rate para escapar:
 
-- Modificar a mano durante el entrenamiento el valor de LR
-
-- Implementar una solución personalizada que tenga en cuenta una métrica (parecido a ReduceLROnPlateau)
-
+- Modificar a mano durante el entrenamiento el valor del learning rate
+- Implementar una solución personalizada que tenga en cuenta una métrica (parecido a `ReduceLROnPlateau`)
 - Utilizar Recocido cosinusoidal con reinicios calientes
+
+---
 
 ### Recocido cosinusoidal con reinicios calientes
 
-Este método presentado en un paper de 2016 [ https://homl.info/coslr ] repite en bucle el funcionamiento del método original; se recalcula utilizando la función de coseno el valor de LR constantemente, fluctuando entre $eta_{max}$ y $\eta_{min}$. Esto ayuda a la exploración al principio del entrenamiento así como a tener tiempo de optimizar el modelo al final.
+Este método presentado en un paper de 2016 [[coslr]](https://homl.info/coslr) repite en bucle el funcionamiento del método original. Se recalcula utilizando la función de coseno el valor del learning rate constantemente, reiniciando a un valor alto periódicamente para escapar de mínimos locales.
+
+---
 
 ### Programación de un ciclo
 
-Otro método popular, introducido en un paper en 2018 [ https://homl.info/1cycle ] comienza calentando LR con un valor $\eta_0$ que crece linealmente hasta $\eta_1$ a mediados del entrenamiento para continuar haciendo lo contrario, disminuir de $\eta_1 \rightarrow \eta_1$ para la segunda mitad del entrenamiento.
+Otro método popular, introducido en un paper en 2018 [[1cycle]](https://homl.info/1cycle), comienza calentando el learning rate con un valor $\eta_0$ que crece linealmente hasta $\eta_1$ a mitad del entrenamiento, para después disminuir linealmente hasta un valor $\eta_2$ mucho más bajo al final del entrenamiento.
+
+---
 
 ## Evitar overfitting mediante la regularización
 
+(Contenido próximo...)
