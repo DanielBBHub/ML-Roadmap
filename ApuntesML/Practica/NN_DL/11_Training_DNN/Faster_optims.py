@@ -1,4 +1,3 @@
-import torch.optim as op
 # Diferentes implementaciones de diferentes optimizadores para acelerar el entrenamiento 
 # redes neuronales
 

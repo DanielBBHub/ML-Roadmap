@@ -1,4 +1,4 @@
-# Training Deep Neural Nets
+# Entrenando re3des neuronales profundas
 
 ## El problema de los gradientes que explotan/desaparecen
 
@@ -330,3 +330,57 @@ Para acabar, se resume en la siguiente tabla todas las técnicas de optimizació
 | AdamW                                | 2                        | 2 o 3                      |
 
 ## Programación de la tasa de aprendizaje
+
+Encontrar un buen tasa de aprendizaje es importantisimo; si es muy bajo el entrenamiento del modelo será muy lento e incluso puede quedarse atascado en un punto óptimo local y si, por otra parte, es muy alto puede no llegar a converger nunca. En el caso de encontrar un buen LR puede resultar en un modelo que tenga buen desempeño pero con un entrenamiento demasiado lento con lo que, en general, es buena idea empezar con un LR alto para avanzar rápidamente e ir bajandolo a meduda que te vayas acercando al final del entrenamiento.
+
+### Programación exponencial
+
+En este método se aplica un factor $\gamma$ que multiplica en intervalos regulares a LR, con lo que despues de $n$ epocas, la tasa de aprendizaje será igual que el valor inicial por $\gamma^n$. Normalmente se busca tener un valor cercano a 1, como 0.9, con lo que despues de 10 iteraciones el LR será un 35% del valor original y despues de 20 solo un 12%.
+
+### Recocido cosinusoidal
+
+En vez de disminuir la tasa de aprendizaje de manera exponencial, se puede utilizar la función de coseno para ir desde la tasa máxima $\large\eta_{max}$ hasta el valor mínimo $\large\eta_{min}$. Esto asegura que LR se mantiene relativamente alta hasta las etapas finales del entrenamiento, estando definido como:
+
+$$
+\large
+\eta_t = \eta_{min} + \frac{1}{2} (\eta_{max} - \eta_{min}) ( 1 + cos(\frac{t}{T_{max}}\pi))
+$$
+
+Ya que es dificil definir tanto el número total de épocas como la tasa mínima, es preferible utilizar otros métodos como el siguiente
+
+### Programador por desempeño
+
+También conocido como programación adaptativa, sigue una métrica en concreto durante el entrenamiento y, si esta métrica deja de mejorar por un tiempo, multiplica el LR por un factor predefinido. Si bien tiene varios hiperparámetros, normalmente los valores por defecto funcionan bien. Algunos a modificar son:
+
+- **mode**: define si la métrica a seguir tiene que maximizarse (max) o minimizarse (min). Es decir, en max se reducirá la tasa si la métrica ha dejado de aumentar y en min se reducirá si la metrica ha dejado de disminuir
+
+- **patience**: define el número de iteraciones que espera para ver una mejora en la métrica a seguir antes de reducir LR
+
+- **factor**: define el valor por el que se reducirá LR.
+
+### Calentar la tasa de aprendizaje
+
+Los métodos anteriores empiezan todos con un valor de $\large\eta$ máximo, lo que puede llevar a que exploten los gradientes o que nunca se haga un avance significativo en algunos casos, con lo que aparece otro ángulo por el que acercarse a este problema, empezar un con un valor LR muy bajo e ir incrementándolo durante el entrenamiento hasta un valor máximo.
+
+Una implementación de esta idea es un programador lineal, que aumente la tasa de forma lineal durante varias épocas, por ejemplo del 10-100% durante 3 iteraciones.
+
+En resumidas cuentas, normalmente siempre quieres "calentar" la tasa de aprendizaje al principio del entrenamiento, así como también quieres "enfriarla" cuando está acabando de entrenar.
+
+También hay otros casos, como cuando el descenso de gradiente se queda atascado en un valle o un punto óptimo local donde pueda quedarse durante todo el entrenamiento, en los que necesitemos modificar LR a mitad del bucle de entrenamiento. Para esto tenemos varias opciones:
+
+- Modificar a mano durante el entrenamiento el valor de LR
+
+- Implementar una solución personalizada que tenga en cuenta una métrica (parecido a ReduceLROnPlateau)
+
+- Utilizar Recocido cosinusoidal con reinicios calientes
+
+### Recocido cosinusoidal con reinicios calientes
+
+Este método presentado en un paper de 2016 [ https://homl.info/coslr ] repite en bucle el funcionamiento del método original; se recalcula utilizando la función de coseno el valor de LR constantemente, fluctuando entre $eta_{max}$ y $\eta_{min}$. Esto ayuda a la exploración al principio del entrenamiento así como a tener tiempo de optimizar el modelo al final.
+
+### Programación de un ciclo
+
+Otro método popular, introducido en un paper en 2018 [ https://homl.info/1cycle ] comienza calentando LR con un valor $\eta_0$ que crece linealmente hasta $\eta_1$ a mediados del entrenamiento para continuar haciendo lo contrario, disminuir de $\eta_1 \rightarrow \eta_1$ para la segunda mitad del entrenamiento.
+
+## Evitar overfitting mediante la regularización
+
