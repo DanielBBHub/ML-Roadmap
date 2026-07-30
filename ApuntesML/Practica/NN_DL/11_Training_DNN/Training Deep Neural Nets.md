@@ -430,4 +430,41 @@ Otro método popular, introducido en un paper en 2018 [[1cycle]](https://homl.in
 
 ## Evitar overfitting mediante la regularización
 
-(Contenido próximo...)
+Ademas de las técnicas que ya hemos visto para regularizar las redes, como early stopping, normalización de lotes y capas existen varias que veremos a continuación
+
+### Regularización $l_1$ y $l_2$
+
+Como ya se ha comentado, se puede utilizar $l_2$ para restringir los pesos de un modelo o $l_1$ para formar un modelo disperso, en el cual los pesos de algunas neuronas son $0$ o prácticamente $0$. 
+
+Y como también hemos visto, el optimizador SGD es equivalente a regularizar por $l_2$ si definimos el parámetro de "weight_decay", con lo que sería una buena forma de implementar esta regularización, aunque esto significa aplicar la desintegración a todos los pesos, tanto las capas de neuronas como las de regularización de lotes/capas y los pesos de los sesgos, con lo que normalmente es mejor implementar una regularización manualmente, para impactar únicamente aquellos que interesen
+
+### Dropout
+
+Este método planteado en un paper de 2012 [ https://homl.info/64 ] y desarrollado más profundamente en uno de 2014 [ https://homl.info/65 ] es un algorítmo relativamente sencillo: en cada iteración del entrenamiento cada neurona tiene la probabilidad $p$ (hiperparametro "ratio de dropout") de ser ignorada en ese paso del entrenamiento. $p$ se suele definir entre una probabilidad del 10-50% ( entre 20-30% en RNN y 40-50% en redes convolucionales). 
+
+Este método afecta al entrenamiento de las neuronas de forma que las hace más independientes, resilientes e intentan ser lo más útiles posibles, sin intentar depender en las neuronas vecinas para que complementen sus cálculos. Las hacen menos sensibles a los cambios en las entradas y genera una red que generaliza mejor.
+
+### Dropout Montecarlo
+
+En un paper de 2016 [ https://homl.info/mcdropout ] se presentó la técnica de dropout Montecarlo, resultados los cuales apuntaban a una mejora en el desempeño de las redes que la utilizaban, además de presentar una justificación matemática para las técnicas de dropout.
+
+Este método no solo está activo durante el entrenamiento, si no que también durante la evaluación del modelo, con lo que las predicciones de la red siempre serán, en mayor o menor medida, aleatorias, por lo que se harán muchas predicciones y calcula la media entre todas ellas.
+
+### Regularización Max-Norm
+
+Otro método popular de regularizaciónm para cada neurona, retringe los pesos $w$ de las conexiones entrantes de manera que $||w||_2 \leq r $, donde $r$ es un hiperparametro y $||·||_2$ es la normalización $l_2$.
+
+Reducir el valor de $r$ ayuda a incrementar la regularización y reducir el overfitting, así como este puede aliviar el problema de los gradientes inestables en el caso de no estar utilizando normalización por lotes/capas.
+
+## Guía práctica
+
+Después de todos los métodos para cada etapa del entrenamiento de las redes neuronales, la siguiente tabla puede servir como una guía para empezar a entrenar redes neuronales profundas.
+
+| Hiperparámetro | Valor por defecto |
+|---|---|
+| Inicializador de kernel | Inicialización de He |
+| Función de activación | ReLU si es superficial; Swish si es profunda |
+| Normalización | Ninguna si es superficial; batch-norm o layer-norm si es profunda |
+| Regularización | Early stopping; weight decay si es necesario |
+| Optimizador | Gradientes acelerados de Nesterov o AdamW |
+| Programación de la tasa de aprendizaje | Programación por desempeño o 1cycle |
