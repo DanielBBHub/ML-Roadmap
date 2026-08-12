@@ -89,7 +89,7 @@ with torch.no_grad():
     # Transformamos los logits en probabilidades con la funcion softmax
     y_probas_all = torch.nn.functional.softmax(y_logits_all, dim=-1)
     # Calculamos la media de la segunda dimension para obtener la pobabilidad media estimada
-    # de cada una de las clases en cada una de las imagenes con resultado de un tensor [3, 10]
+    # de cada una de las clases en cada una de las imagenes con resultado de un tensor [3, 10] 
     y_probas = y_probas_all.mean(dim=1)
 
 # Regularizacion Max-Norm
