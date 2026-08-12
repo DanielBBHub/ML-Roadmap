@@ -56,3 +56,8 @@ Además de las características anteriores, la capa de pooling max tiene cierta 
 
 Por otro lado, estas capas son altamente destructivas, reduciendo el tamaño de la imagen, sus detalles, área ... así como contraproducentes en aplicaciones en las que es importante la traslación/rotación/escalado de los objetos en la imagen.
 
+## Arquitecturas de redes neuronales convolucionales (CNNs)
+
+Las arquitecturas típicas de las CNNs suelen apilar varias capas convolucionales, normalmente seguidas de capas ReLU, una capa pooling y vuelta a empezar. La imagen de entrada se vuelve más y más pequeña según avanza en la red pero también se vuelve más profunda, generando más mapas de características, debido a las capas convolucionales. Finalmente, al final de la red convolucional se agrega una red neuronal directa.
+
+### LeNet-5
