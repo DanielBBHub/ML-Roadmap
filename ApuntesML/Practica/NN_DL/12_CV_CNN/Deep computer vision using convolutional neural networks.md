@@ -45,4 +45,14 @@ donde :
 - $\large b_k$ es el parametro bias
 - $\large w_{u,v,k',k}$ es el peso de conexión entre cualquier neurona en el mapa $k$ de la capa $l$ y su entrada en $(u,v)$ y mapa $k'$
 
-## Capas de Pooling
+## Capas de agrupacion (Pooling)
+La función esencial de las capas pooling es reducir las imagenes de entrada para disminuir la carga computacional, el uso de memoria y el numero de parámetros.
+
+Así como las capas convolucionales, cada neurona en una capa de agrupación esta conectada a las salidas de un número de neuronas de la capa anterior que se encuentran en un campo receptivo. Se ha de definir el tamaño, el "stride" y el tipo de padding como en las capas convolucionales, pero estas capas no tienen ni pesos ni bias, solo agrega mediante una función (como max o media) las entradas.
+
+> Normalmente estas capas de agrupación se aplican independientemente del canal, con lo que la imágen de entrada y la resultante tienen la misma profundiad (número de canales)
+
+Además de las características anteriores, la capa de pooling max tiene cierta cantidad de invarianza a pequeñas traslaciones en la imagen, con lo que introduciendo una capa de estas cada x capas convolucionales podemos obtener invarianza a gran escala, así como una pequeña tolerancia a rotación y escala de la imagen. Esto puede ayudar al modelo a tomar una predicción en la que no dependa de estas variables.
+
+Por otro lado, estas capas son altamente destructivas, reduciendo el tamaño de la imagen, sus detalles, área ... así como contraproducentes en aplicaciones en las que es importante la traslación/rotación/escalado de los objetos en la imagen.
+
