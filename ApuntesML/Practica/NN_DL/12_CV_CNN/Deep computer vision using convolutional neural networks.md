@@ -61,3 +61,110 @@ Por otro lado, estas capas son altamente destructivas, reduciendo el tamaño de 
 Las arquitecturas típicas de las CNNs suelen apilar varias capas convolucionales, normalmente seguidas de capas ReLU, una capa pooling y vuelta a empezar. La imagen de entrada se vuelve más y más pequeña según avanza en la red pero también se vuelve más profunda, generando más mapas de características, debido a las capas convolucionales. Finalmente, al final de la red convolucional se agrega una red neuronal directa.
 
 ### LeNet-5
+
+Es posiblemente la arquitectura mas conocida y esta compuesta de la siguiente manera:
+
+| Layer | Type            | Maps | Size    | Kernel size | Stride | Activation |
+|-------|-----------------|------|---------|-------------|--------|------------|
+| Out   | Fully connected | –    | 10      | –           | –      | RBF        |
+| F6    | Fully connected | –    | 84      | –           | –      | tanh       |
+| C5    | Convolution     | 120  | 1 × 1   | 5 × 5       | 1      | tanh       |
+| S4    | Avg pooling     | 16   | 5 × 5   | 2 × 2       | 2      | tanh       |
+| C3    | Convolution     | 16   | 10 × 10 | 5 × 5       | 1      | tanh       |
+| S2    | Avg pooling     | 6    | 14 × 14 | 2 × 2       | 2      | tanh       |
+| C1    | Convolution     | 6    | 28 × 28 | 5 × 5       | 1      | tanh       |
+| In    | Input           | 1    | 32 × 32 | –           | –      | –          |
+
+### AlexNet
+
+Esta arquitectura de CNN ganó la competición ILSVRC de 2012. Fué la primera en apilar capas convolucionales unas encima de las otras
+
+| Layer | Type            | Maps    | Size    | Kernel size | Stride | Padding | Activation |
+|-------|-----------------|---------|---------|-------------|--------|---------|------------|
+| Out   | Fully connected | –       | 1,000   | –           | –      | –       | Softmax    |
+| F10   | Fully connected | –       | 4,096   | –           | –      | –       | ReLU       |
+| F9    | Fully connected | –       | 4,096   | –           | –      | –       | ReLU       |
+| S8    | Max pooling     | 256     | 6 × 6   | 3 × 3       | 2      | valid   | –          |
+| C7    | Convolution     | 256     | 13 × 13 | 3 × 3       | 1      | same    | ReLU       |
+| C6    | Convolution     | 384     | 13 × 13 | 3 × 3       | 1      | same    | ReLU       |
+| C5    | Convolution     | 384     | 13 × 13 | 3 × 3       | 1      | same    | ReLU       |
+| S4    | Max pooling     | 256     | 13 × 13 | 3 × 3       | 2      | valid   | –          |
+| C3    | Convolution     | 256     | 27 × 27 | 5 × 5       | 1      | same    | ReLU       |
+| S2    | Max pooling     | 96      | 27 × 27 | 3 × 3       | 2      | valid   | –          |
+| C1    | Convolution     | 96      | 55 × 55 | 11 × 11     | 4      | valid   | ReLU       |
+| In    | Input           | 3 (RGB) | 227 × 227 | –         | –      | –       | –          |
+
+Para reducir el overfitting se utilizaron dos técnicas de regularización. La primera fue dropout con .5 durante el entrenamiento de F9 y F10 y la segunda fue "data augmentation" moviendo, girando y cambiando la iluminación aleatoriamente de imagenes del conjunto de entrenamiento. 
+
+Por otro lado tambien se utilizó una técnica de regularización llamada "local response normalization" (LRN) en la cual las neuronas que se activan "más fuertemente" iniben otras neuronas en la misma posición en mapas de características vecinos, lo cual fuerza la especialización en diferentes mapas de características y a explorar un rango más grande de características. Esta activación competitiva se ha observado biológicamente.
+
+### GoogLeNet
+
+Ganadora de la edición 2014. Una arquitectura mucho más profunda y que implementaba subredes llamadas "inception modules" que permitían utilizar los parametros de manera más eficiente.
+
+Estas subredes utilizan varias capas convolucionales con diferentes tamaños de kernel (p.j $1 \times 1$ y $3 \times 3$) para captar detalles a diferentes escalas, una capa es capaz de captar patrones finos mientras que la otra tiene un contexto mayor para despues que combine esta información la red con una capa de concatenación en profundidad.
+
+La clave, y lo que permite a esta arquitectura ser lo profunda que es son las capas con kernel $1 \times 1$, ya que actuan como cuello de botella. Estas capas reducen la dimensionalidad antes de aplicar el filtro mas grande.
+
+
+![diagrama de las subredes inception](img/inception_module.png)
+
+La arquitectura es la siguiente:
+
+![Arquitectura de GoogLeNet](img/GoogLeNet.png)
+
+- Las dos primeras capas reducen el tamaño de la imagen por 4, para disminuir el coste computacional, mientras que la primera capa convolucional utiliza un kernel $7 \times 7$ para preservar la mayor cantidad de información posible
+
+- Despues la LRN se ocupa de que las capas anteriores aprendan una gran variedad de características
+
+- Las dos siguientes capas convolucionales sirven de cuelo de botella
+
+- Otra LRN con el mismo objetivo
+
+- Vuelve a reducirse el tamaño de la imagen por dos con una max pool para acelerar los cálculos
+
+- Una pila de 9 modulos inception con un par de max pool para reducir la dimensionalidad y acelerar la red
+
+- La capa de Global Avg pooling devuelve una media de cada mapa de características, dejando a un lado la información espacial
+
+- Las últimas capas son una de dropout 0.4 para regularizar  y una capa de salida con 1000 clases con una función de activación softmax para estimar las probabilidades de las clases
+
+### ResNet
+
+La variante que se llevó la edición de 2015 tenía una profundidad de 152 capas, utilizando "skip conections"; la entrada de una capa se añadía a la salida de otra capa situada más arriba de la pila
+
+El concepto es que cuando se entrena una red neuronal, el objetivo es hacer que prediga un valor $h(x)$. Si se añade la entrada $x$ a la salida de la red, entonces esta estará obligada a predecir $h(x) - x$, lo que se conoce como aprendizaje residual. Esto es bastante útil ya que acelera el proceso de entrenamiento.
+
+> Cuando se inicializa una red, sus pesos son cercanos a $0$ pero si se añade una "skip connection" la red tiene como salida una copia de su entrada, es decir, la función de salida es parecida a la identidad. Además, con esta técnica la red puede empezar a hacer progreso incluso antes de que sus capas "aprendan" ya que la señal viaja a través de toda la red
+
+![Arquitectura ResNet](img/ResNet.png)
+
+Es importante destacar que se reduce el tamaño de la imagen a la mitad con el stride $2$ en la quinta capa convolucional y esto fuerza a saltarse una "skip connection", ya que no podría agregarse la salida y la entrada por diferencia de tamaños. Para solucionar este problema se puede utilizar una capa convolucional con kernel $1 \times 1$ con stride $2$
+
+### Xception
+
+Una variante de GoogLeNet que une ideas de esta arquitectura y de ResNet, reemplazando los "inception modules" por una capa especial llamada "depthwise separable convolutional layer". 
+
+Mientras que las capas convolucionales normales intentan buscar patrones espaciales (como un ovalo) y patrones entre canales (como boca + ojos + nariz = cara), estas capas convolucionales separables asumen que estos dos patrones se pueden modelar de individualmente, estando compuestas por dos componentes:
+- La primera parte aplica un solo filtro espacial a cada entrada del mapa de características
+
+- La segunda parte busca exclusivamente patrones entre canales con filtros $1 \times 1$
+
+Ya que este tipo de capas solo tienen un filtro espacial, se recomienda ponerlas detras de capas que tengan una buena cantidad de canales. Debido a esto, esta arquitectura empieza con dos capas convolucionales normales y el resto son convolucionales separables, además de algunas max pool y las capas finales como global avg y una capa de salida densa.
+
+En la práctica, normalmente tienen un mejor desempeño las convolucionales separables que las conovlucionales normales, además de que utilizan menos parámetros, menos memória y hacen menos cálculos que las capas convolucionales normales.
+
+### SENet
+
+Esta arquitectura ganadora de la edición de 2017 amplia arquitecturas ya existentes como ResNet e inception y mejora su desempeño gracias a añadir una pequeña red neuronal, llamada bloque SE, a cada modulo inception o unidad residual en la arquitectura original, analizando la salida de la capa a la que esta adherida, centrándose únicamente en la dimensión de profundidad. Este bloque tiene como objetivo analizar cuales características son más activas juntas, para recalibrar los mapas de características.
+
+> En el caso de reconocimiento de caras, estas redes pueden identificar que normalmente si se ve una boca y una nariz se espera ver unos ojos también, con lo que si el bloque ve una activación fuerte en los mapas de características de la boca y la nariz potenciará el mapa de características de los ojos, o dicho de otra manera, reducirá la relevancia del resto de mapas.
+
+Esta pequeña red esta compuesta únicamente de tres partes:
+
+- Una global avg pool: esta calcula la media de cada mapa de características
+
+- Una capa intermedia con una función ReLU: capa con un número bastante reducido en comparación con los mapas de entrada (unas 16 veces), con lo que los números de los mapas quedan comprimidos en un vector pequeño. Este paso que actua como cuello de botella fuerza al bloque SE a aprender una representación general de las combinaciones de características
+
+- Una capa de salida con una función sigmoide: recoge el vector anterior y saca un vector de recalibarción que contiene un número por mapa de características, entre $(0,1)$, los cuales se utilizan para escalar la relevancia de los mapas.
+
