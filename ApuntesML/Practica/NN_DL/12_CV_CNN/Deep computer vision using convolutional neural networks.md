@@ -131,7 +131,7 @@ La arquitectura es la siguiente:
 
 ### ResNet
 
-La variante que se llevó la edición de 2015 tenía una profundidad de 152 capas, utilizando "skip conections"; la entrada de una capa se añadía a la salida de otra capa situada más arriba de la pila
+La variante que se llevó la edición de 2015 tenía una profundidad de 152 capas, utilizando "skip conections" (residual units); la entrada de una capa se añadía a la salida de otra capa situada más arriba de la pila
 
 El concepto es que cuando se entrena una red neuronal, el objetivo es hacer que prediga un valor $h(x)$. Si se añade la entrada $x$ a la salida de la red, entonces esta estará obligada a predecir $h(x) - x$, lo que se conoce como aprendizaje residual. Esto es bastante útil ya que acelera el proceso de entrenamiento.
 
@@ -168,3 +168,43 @@ Esta pequeña red esta compuesta únicamente de tres partes:
 
 - Una capa de salida con una función sigmoide: recoge el vector anterior y saca un vector de recalibarción que contiene un número por mapa de características, entre $(0,1)$, los cuales se utilizan para escalar la relevancia de los mapas.
 
+### Otras arquitecturas
+
+#### MobileNet
+
+Las redes Mobilenet son modelos diseñados para ser ligeros y rápidos, por lo que son populares en aplicaciones móviles y web. Se basam en las capas convolucionales separables, como Xception. De manera similar se implementan modelos como SqueezeNet, ShuffleNet o MNasNet
+
+#### EfficientNet
+
+Esta red es posiblemente la más importante de las que se hablen en esta sección. Los autores propusieron un método para escalar cualquier red convolucional incrementando a la vez la profundidad (nº capas), anchura (filtros por capa) y resolución (tamaño de la entrada) siguiendo unos principios llamados "compound scaling". Los autores utilizaron la busqueda de arquitectura neural para encontrar una buena versión reducida de la arquitectura de ImageNet y luego aplicaron "compound scaling" para crear versiones cada vez más grandes de dicha arquitectura.
+
+El "compound scaling" se fundamenta en una medición logarítmica del presupuesto de computación, definido como $\phi$, de tal manera que si el presupuesto se duplica, $\phi$ aumenta en 1, dando la relación proporcional entre las operaciones disponibles en entrenamiento como $2^{\phi}$. Dicho esto, la profundidad, anchura y resolución de la CNN escalan como $\alpha^{\phi}, \beta^{\phi}, \gamma^{\phi}$ respectivamente.
+
+> Los valores de estos factores tienen que $> 1$ y $\alpha \times \beta^{2} \times \gamma^{2} \approx 2$
+
+En resumen, este escalado no es que sea gratuito; es una forma de escalar razonadamente una red neuronal, pudiendo predecir el impacto en la velocidad de entrenamiento e inferencia pudiendo optimizar dicho impacto y obteniendo más precisión que si se escalase únicamente una de las tres dimensiones.
+
+#### ConvNext
+
+ConvNext es similar a ResNet pero con ciertos cambios inspirados en las mejores versiones de las arquitecturas de transformers de visión, como utilizar kernels grandes, menos funciones de activación y capas de normalización en cada residual unit
+
+### Elegir la arquitectura correcta
+
+Esta decisión recae únicamente en los requerimientos del proyecto, ¿Qué es lo más importante? Precisión, tamaño del modelo, velocidad de inferencia, consumición de energía... PyTorch tiene muchos modelos preentrenados [[Lista de opciones](https://pytorch.org/vision/stable/models)], algunos de estos són los siguientes:
+
+![Lista de modelos ordenada por tamaño](img/lista_modelos.png)
+
+
+### Requerimientos de RAM GPU: Inferencia vs Entrenamiento
+
+Las CNN necesitan *mucha* RAM. Una única capa convolucional con 200 filtros $5 \times 5$ con stride $1$ y padding="same", procesando una imagen RGB $150 \times 100$:
+
+- Número de parametros 15200 ($5 \times 5 \times 3 + 1 \times 200$). No es mucho teniendo en cuenta que para generar una salida del mismo tamaño, una red neuronal necesitaria $ 200 \times 150 \times 100$ neuronas, cada una conectada a $ 150 \times 100 \times 3$ entradas, un total de $135$ *mil millones* de parametros
+
+- Por otro lado, cada uno de los 200 mapas de características contiene $ 150 \times 100$ neuronas que necesitan calcular una suma de pesos de sus $5 \times 5 \times 3 = 75$ entradas, unas $225$ millones de multiplicaciones
+
+- Con lo que la salida de la red convolucional ocupara unos $200\times150\times100\times32 = 90$ millones de bits (12MB) de RAM por cada instancia, si entrenamos en lotes, digamos 100 instancias, entonces esta única capa convolucional utilizará ella sola $1.2$ GB de RAM
+
+Durante la inferencia solo necesitas en memória tener hasta dos capas convolucionales, ya que una vez que una es calculada, puede ser reemplazada por la siguiente, mientras que en tiempo de entrenamiento es necesario mantener en memória todos los cálculos necesarios en el forward pass para la retro-propagación.
+
+Si se queda sin memória la GPU mientras entrena el modelo, se puede reducir el tamaño del lote utilizando varios trucos para intentar mantener los beneficios de los lotes grandes, como mantener durante varios lotes los cálculos de los gradientes. Tamién se puede intentar reducir la dimensionalidad con "strides", quitar algunas capas, quantizar el modelo (reducir su precisión p.j de 32 bits a 16 bits) o incluso distribuir las capas entre GPU y CPU
