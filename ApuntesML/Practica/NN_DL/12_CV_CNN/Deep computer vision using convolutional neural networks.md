@@ -208,3 +208,66 @@ Las CNN necesitan *mucha* RAM. Una única capa convolucional con 200 filtros $5 
 Durante la inferencia solo necesitas en memória tener hasta dos capas convolucionales, ya que una vez que una es calculada, puede ser reemplazada por la siguiente, mientras que en tiempo de entrenamiento es necesario mantener en memória todos los cálculos necesarios en el forward pass para la retro-propagación.
 
 Si se queda sin memória la GPU mientras entrena el modelo, se puede reducir el tamaño del lote utilizando varios trucos para intentar mantener los beneficios de los lotes grandes, como mantener durante varios lotes los cálculos de los gradientes. Tamién se puede intentar reducir la dimensionalidad con "strides", quitar algunas capas, quantizar el modelo (reducir su precisión p.j de 32 bits a 16 bits) o incluso distribuir las capas entre GPU y CPU
+
+## Clasificación y Localización 
+La localización de objetos se puede expresar en problemas de regresion lineal; predecir el centro de la bounding box o  incluso su altura y anchura o las coordenadas que la delimiten (esquinas superior izquierda e inferior derecha). En definitiva esto quiere decir que necesitamos una capa adicional con una salida de cuatro numeros.
+
+El modulo de FlowerLocator combina dos cabezas, la del modelo de clasificación y una capa adicional para la salida de las coordenadas. La segunda tiene las mismas entradas que la primera, pero solo saca numeros. Una vez este entrenado se puede utilizar como el resto de modelos, pero para entrenarlo hay que hacerlo como ya se ha visto.  Para este caso en concreto pordia utilizarse cross entropy para la prediccion de clases e intersect over union (IoU) para la de las bounding box.
+
+Para el entrenamiento de la segunda cabeza habria que tener etiquetadas las cajas que contengan a estas flores, ya bien sea a mano o con herramientas que ayuden a acelerar el proceso. Una vez etiquetadas habria que crear un nuevo conjunto de datos, donde cada registro tuviese una imagen, etiqueta y bounding box. TorchVision ya tiene una clase para BoundingBoxes que representa una lista de ellas.
+
+La clase de BoundingBoxes es una subclase de TVTensor que a su vez es una subclase de Tensor, es decir, se puede tratar exactamente como un tensor pero con mas funcionalidades, con lo que se pueden aplicar transformers de la misma manera que a las imagenes
+
+Por otro lado, MSELoss funciona normalmente bien para entrenar el modelo, pero no la metrica adecuada para evaluar la predicción de las cajas. Como se ha comentado antes IoU es la metrica a utilizar. Es el area en la que se solapan las cajas del etiquetado y la predicción dividido entre el area de su union, es decir, si no se solapan nada las cajas 0, en el caso de que haya un encaje perfecto 1 (IoU = |P ∩ T| / |P ∪ T|). El problema de esta métrica en el entrenamiento es que, indiferentemente de la distancia de estas cajas, si no hay solape IoU = 0, con lo que no habra gradiente ni progreso, de ahí que se implementase el GIoU, el cual considera la caja mas pequeña S que contiene P y T (prediccion y etiquetado) y resta de IoU el rato de S que no esta cubierto por P o T (GIoU = IoU – |S – (P ∪ T)| / |S|). Esto resulta en un número mas pequeño cuanto mas se  diferencien P y T, pero como queremos maximizar esta metrica, la perdida sera 1 - GIoU.
+
+Otra variante es la IoU completa (CIoU), la cual considera $3$ factores geometricos:
+    - La distancia a los centros de P y T normalizada por la distancia de la diagonal S
+    - La similitud entre los ratios de aspecto entre P y T
+
+La metrica es 1 - CIoU y esta implementada en torchvision.
+
+## Detección de objetos
+
+Clasificar y localizar objetos como se ha comentado es una tarea encomiable, pero existe un problema cuando son mas de uno los objetos que hay en la imagen. La solución común era utilizar una red entrenada para detectar y clasificar en el centro de la imagen y se iba desplazando sobre la imagen, haciendo predicciones, no solo sobre la clase y bounding box, si no sobre una puntuación de "objeto"; la probabilidad de que esa imagen contuviese un objeto en ella. 
+
+Esta tecnica era bastante sencilla, pero tenia sus problemas:
+    - Objetos de varios tamaños, con lo que la primera pasada podía estar acompañada por otras con matrices más pequeñas/grandes
+    - Deteccion multiple del mismo objeto, con sus multiples clases y bounding boxes
+
+Para esto último se utilizaba non-max suppression, que eliminaba las bounding boxes por debajo de un umbral de puntuación de objeto. Seguidamente, de las que quedaban, se quedaba con la que mas puntuación de objeto tenia y eliminaba el resto que se solapasen con ella repetidamente hasta que no quedasen mas cajas que suprimir. 
+
+El funcionamiento era bueno, pero en tiempo de inferencia era desastroso ya que requeria que se predijese multiples veces sobre la misma imagen.
+
+### Redes completamente convolucionales
+
+Afortunadamente hay una manera más rápida de desplazar una red sobre una imagen, utilizar una FCN (fully convolutional network). Esta idea introducida en el paper de 2015 [ https://homl.info/fcn ] para la segmentación semántica apuntaba a que se podia reemplazar las capas "densas" de una red con capas convolucionales. Estas capas tienen que tener un número de filtros igual a la cantidad de neuronas en la capa densa, el tamaño del filtro debe ser igual que el número de mapas de características y el padding debe ser "valid", mientras que el stride puede ser $1$ o más, pero los resultados entre capas serán los mismos.
+
+Esto es importante por qué una capa densa espera un tamaño de entrada específico, ya que tiene un peso por entrada, mientras que la capa convolucional puede procesar imágenes de cualquiera de los tamaños. Ya que una FCN solo contiene capas convolucionales, esta puede entrenarse y utilizarse con imágenes de cualquier tamaño.
+
+### You Only Look Once (YOLO)
+
+YOLO es una arquitectura para la detección de objetos rápida y precisa propuesta en un paper de 2015 [ https://homl.info/yolo ], ques es capaz de correr sobre video en tiempo real. Esta arquitectura es parecida a las FCN pero con unos cambios bastante importantes:
+
+    - Para cada celda matriz YOLO solo considera como objetos aquellos que tienen el centro de su caja en esa celda. Sus coordenadas son relativas a la celda, siendo $(0,0)$ la esquina superior izquierda y $(1,1)$ la esquina inferior derecha, aun que la altura/anchura de esta puede salirse de la celda
+
+    - Tiene dos cajas como salida para ayudar al modelo a manejar situaciones en las que hay objetos muy pegados entre ellos y que el centro de la caja esta en la misma celda.
+
+    - YOLO tambien saca una distribución de las probabilidades de clase para cada celda, prediciendo 20 clases. Esto produce un mapa de probabilidades de clase aproximado. Es importante aclarar que el modelo predice distribuciones de probabilidades por celda, no por caja.
+
+## Seguimiento de objetos
+
+El seguimiento de objetos es un reto, ya que estos se mueven, crecen o encojen e incluso cambian cuando se dan la vuelta o tienen una iluminación diferente o son opacados por otro objeto. Uno de los sistemas mas populares para el seguimiento de objetos es DeepSORT, basado en una combinación de algorítmos clásicos y deep learning:
+
+    - Utiliza filtros Kalman para estimar la posición más probable de un objeto basado en sus detecciones previas y asumiendo un movimiento constante
+    
+    - Utiliza un modelo para medir lo parecidos que son el objeto y las nuevas detecciones
+    
+    - Utiliza el algorítmo húngaro para mapear nuevas detecciones a objetos ya existentes, encontrando la combinación de mapeado que minimiza la distancia entre detecciones y posiciones predichas
+
+La libreria de Ultralytics tambien tiene soporte para seguimiento de objetos con su algoritmo Bot-SORT, una versión mejorada de DeepSORT gracias a la compensación del movimiento de camara y modificaciones al filtro Kalman.
+
+## Segmentación semántica
+
+En la segmentación semántica cada pixel se le asigna a una clase del objeto al que pertenece, lo cual hace indistinguibles diferentes objetos de la misma clase. El principal problema de este método es la resolución espacial que se pierde en la imagen cuando pasa por una red convolucional normal, con lo que esta puede saber que hay una persona en una zona general de la imágen, pero no puede llegar a ser más preciso que eso.
+
+Para esto hay varias soluciones, algunas más complejas otras más simples. En las FCN, por ejemplo, acabas teniendo una imágen reducida en comparación a la entrada, con lo que se añade una capa de escalado que multiplica la resolución para devolver la imagen a su tamaño original. Esto puede hacerse de varias maneras, pero en ese paper se eligió la capa convolucional traspuesta (es similar a utilizar una capa convolucional con estrides de fracciones como 1/2). El método anterior era aún muy impreciso con lo que lo complementaron con skip connections.
