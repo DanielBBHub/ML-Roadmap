@@ -10,3 +10,15 @@ __pycache__/
 *.pyc
 **/datasets
 **.pt
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/coco_eval.py.1
+.gitignore
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/coco_eval.py
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/coco_utils.py
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/coco_utils.py.1
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/coco_eval.py.1
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/engine.py
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/engine.py.1
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/transforms.py
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/transforms.py.1
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/utils.py.1
+ApuntesML/Practica/NN_DL/12_CV_CNN/Ejercicios/utils.py
