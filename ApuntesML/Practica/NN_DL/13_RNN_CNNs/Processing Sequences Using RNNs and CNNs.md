@@ -85,3 +85,66 @@ Para observar patrones de más largo plazo (por ejemplo, temporadas anuales) pue
 Otra técnica muy común es la **diferenciación**: en vez de trabajar con los valores originales, se trabaja con la diferencia entre cada valor y el valor de un desfase determinado (por ejemplo, `diff(12)` sobre datos mensuales para eliminar la estacionalidad anual). Diferenciar permite eliminar tanto la temporalidad como las modas/tendencias de la serie (por ejemplo, una caída sostenida de pasajeros en cierto periodo de años), dejando una serie **estacionaria**: una serie cuyas propiedades estadísticas (media, varianza) no cambian con el tiempo.
 
 Trabajar con series estacionarias simplifica mucho el modelado, ya que se elimina la necesidad de que el modelo aprenda también la tendencia y la estacionalidad. Una vez entrenado y validado un modelo sobre la serie diferenciada, es sencillo recuperar las predicciones en la escala original simplemente deshaciendo la diferenciación (sumando de nuevo el valor de referencia que se restó).
+
+### La familia del modelo ARMA
+
+El modelo ARMA (autoregressive moving average) fue desarrollado por Herman Wold en la década de los 30: cálcula predicciones utilizando una suma ponderada de los valores pasados y corrige esta predicción añadiendo una media móvil.
+
+$$
+\large
+\begin{align}
+\^{y}_{(t)} = \sum_{i=1} \alpha_i y_{(t-i)} + \sum_{i=1} \Theta_i \epsilon_{(t-i)} \\
+\text{ dada } \epsilon_{(t)} = y_{(t)} - \^{y}_{(t)}
+\end{align}
+$$
+
+En la ecuación anterior:
+- $\^{y}_{(t)}$ es la predicción del modelo para el paso $t$
+
+- $y_{(t)}$ es el valor de la serie temporal en el paso $t$
+
+- La primera suma es la suma ponderada de los últimos $p$ valores en base a los pesos $\alpha_i$. $p$ es un hiperparametro que determina cuantas muestras en el pasado tiene que tener en cuenta el modelo. Esta suma es el componente autoregresivo del modelo
+
+- La segunda suma es una suma ponderada sobre el error de las últimas $q$ predicciones en base a los pesos $\Theta_i$. De igual manera, $q$ es un hiperparametro. Esta suma es la media móvil del modelo
+
+Es importante destacar que este modelo asume que la serie temporal es estacionaria, si no lo es tendremos que procesar esa información. Para esto se pueden aplicar diferenciaciones a la serie, tantas como hagan falta; aplicar $d$ rondas consecutivas de diferenciación calcula una aproximación de la derivada de orden $d$ de la serie temporal, eliminando modas polinómicas de hasta grado $d$. Este hiperparametro $d$ se le conoce como orden de integración.
+
+Esa es la contribución principal del modelo **ARIME** (autoregressive integrated moving average), el cual calcula $d$ rondas de diferenciación para asegurar que la serie sea estacionaria.
+
+El último miembro de la familia **ARMA** es el modelo **SARIMA** (seasonal ARIMA). Este modelo añade un componente temporal para una frecuencia dada, utilizando los hiperparametros $[p,d,q]$ ademas de los nuevos parametros que integra $[P,D,Q]$ para tener en cuenta las modas temporales y $s$ para denotar el periodo temporal.
+
+La librería statsmodels ofrece la clase ARIMA (dentro de statsmodels.tsa.arima.model), que en realidad implementa toda la familia SARIMA: además del hiperparámetro order=(p, d, q) acepta un seasonal_order=(P, D, Q, s) opcional. Si seasonal_order se deja vacío o en (0, 0, 0, 0), el modelo se reduce a un ARIMA normal.
+
+Al preparar la serie es importante fijar explícitamente su frecuencia (por ejemplo asfreq("D") para frecuencia diaria) ya que el modelo necesita conocer el espaciado temporal entre observaciones para poder extrapolar correctamente.
+
+Validación mediante walk-forward (validación progresiva)
+
+Evaluar el modelo con una única predicción puede llevar a conclusiones erróneas por simple suerte o mala suerte. Para obtener una estimación más fiable del rendimiento se emplea una validación walk-forward: se realizan predicciones a un paso (one-step-ahead) para cada día de un periodo de test, reentrenando el modelo desde cero cada vez con todos los datos disponibles hasta ese momento (incluyendo los días de test ya transcurridos). Con las predicciones acumuladas de todo el periodo se calcula una métrica de error, como el MAE (mean absolute error), que resume el desempeño global del modelo.
+
+Este MAE se compara contra una predicción naive (por ejemplo, asumir que el valor de mañana será igual al de hoy, o al de la misma semana pasada) que sirve como referencia mínima: un modelo solo es útil si consigue batir de forma consistente a esta baseline. En el caso de la serie de pasajeros de rail, el SARIMA obtuvo un MAE de ≈32.041, notablemente mejor que el MAE de la predicción naive (≈42.143), lo cual indica que, aunque el modelo no es perfecto, aporta una mejora sustancial de media.
+
+Selección de hiperparámetros
+
+Elegir los valores de $p, d, q, P, D, Q$ y $s$ no es trivial. Existen métodos analíticos basados en las funciones de autocorrelación (ACF) y autocorrelación parcial (PACF) de la serie diferenciada, que permiten inferir qué órdenes autorregresivo y de media móvil son razonables. Sin embargo, el enfoque más simple para empezar es la búsqueda por fuerza bruta (grid search): se entrena y evalúa el modelo (mediante walk-forward validation) para cada combinación de hiperparámetros candidata, y se elige la combinación con menor error.
+
+Como guía general para acotar el espacio de búsqueda:
+- $p, q, P, Q$ suelen tomar valores pequeños, típicamente entre 0 y 2, y en ocasiones hasta 5 o 6.
+- $d, D$ suelen ser 0 o 1, y rara vez 2.
+- $s$ no se busca: se fija según el periodo de la estacionalidad dominante que se observe en los datos (en este caso, $s=7$ por la fuerte estacionalidad semanal del tráfico de pasajeros).
+
+La métrica de error usada en la búsqueda (MAE en este ejemplo) puede sustituirse por cualquier otra que se ajuste mejor al objetivo de negocio del problema.
+
+Como alternativa (o complemento) a la búsqueda por fuerza bruta, existe un método más analítico basado en dos herramientas estadísticas: la función de autocorrelación (ACF) y la función de autocorrelación parcial (PACF).
+
+- La ACF mide, para cada desfase $k$ (lag), la correlación entre la serie y una versión de sí misma desplazada $k$ pasos. Captura tanto la relación directa entre $y_{(t)}$ e $y_{(t-k)}$ como la que llega indirectamente a través de los desfases intermedios ($y_{(t-1)}, y_{(t-2)}, \dots, y_{(t-k+1)}$).
+- La PACF mide esa misma correlación entre $y_{(t)}$ e $y_{(t-k)}$, pero eliminando el efecto de los desfases intermedios. Es decir, aísla la correlación que aporta específicamente el lag $k$, una vez descontado lo que ya explican los lags anteriores.
+
+Estas dos funciones se calculan sobre la serie ya hecha estacionaria (tras aplicar la diferenciación necesaria) y se interpretan como una heurística para elegir $p$ y $q$:
+
+- Si la PACF cae abruptamente a cero después del lag $p$ (mientras la ACF decae de forma más gradual), la serie se comporta como un proceso AR(p) puro.
+- Si la ACF cae abruptamente a cero después del lag $q$ (mientras la PACF decae de forma más gradual), la serie se comporta como un proceso MA(q) puro.
+- Si ambas decaen gradualmente sin un corte claro, es probable que se necesite un modelo ARMA mixto, y suele ser más práctico recurrir a la búsqueda por fuerza bruta.
+
+El mismo razonamiento se puede aplicar a los desfases estacionales (múltiplos de $s$, por ejemplo 7, 14, 21 para una estacionalidad semanal) para orientar la elección de $P$ y $Q$.
+
+Este método tiene la ventaja de requerir mucho menos cómputo que un grid search exhaustivo, pero exige interpretar gráficamente los correlogramas de ACF y PACF, lo cual puede ser subjetivo cuando la señal no es clara — de ahí que, en la práctica, muchas veces se combine con (o se sustituya directamente por) la búsqueda por fuerza bruta.
