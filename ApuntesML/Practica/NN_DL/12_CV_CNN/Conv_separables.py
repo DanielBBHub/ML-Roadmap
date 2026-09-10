@@ -1,6 +1,6 @@
 # Implementación de las capas convolucionales separables como módulo personalizado de pytorch
 import torch
-from torch import torch.nn as nn
+import torch.nn as nn
 
 
 class SeparableConv2d(nn.Module):

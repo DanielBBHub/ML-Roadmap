@@ -1,7 +1,7 @@
 # Implementando capas de agrupación (pooling) en pytorch
 
 import torch
-from torch import torch.nn as nn
+import torch.nn as nn
 
 # MaxPool (tamaño del kernel y opcionalmente el padding)
 max_pool = nn.MaxPool2d(kernel_size=2)

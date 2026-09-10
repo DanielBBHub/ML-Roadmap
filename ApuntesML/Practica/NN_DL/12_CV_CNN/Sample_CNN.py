@@ -1,6 +1,6 @@
 from functools import partial
 import torch
-from torch import torch.nn as nn
+import torch.nn as nn
 
 # Una posible implementación de una red convolucional para la predicción de clases en el dataset de FashionMNIST
 # Encadena capas convolucionales, ReLU y capas de pooling para darle una salida que alimentará una red neuronal directa

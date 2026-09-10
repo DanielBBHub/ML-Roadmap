@@ -1,5 +1,5 @@
 import torch
-from torch import torch.nn as nn
+import torch.nn as nn
 from Res_unit import ResidualUnit
 
 class ResNet34(nn.Module):
