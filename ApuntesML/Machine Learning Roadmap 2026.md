@@ -1,10 +1,3 @@
-
-
-> [!INFO]  
-> Ruta paso a paso para convertirte en **Machine Learning Engineer** en 2026.  
-> Basado en el roadmap de [roadmap.sh](https://roadmap.sh/).
----
-
 ## 📐 Fundamentos Matemáticos
 
 ### Álgebra Lineal
@@ -55,8 +48,7 @@
     
 - [[Matplotlib]]
     
-- [[Seaborn]]
-    
+- [[Seaborn]]   
 
 ---
 
@@ -214,25 +206,25 @@
     
 - [[Keras]]
     
-- [[PyTorch]]
+- [[PyTorch]] ✅
     
-- [[Scikit-learn]]
+- [[Scikit-learn]] ✅
     
 ### Arquitecturas
 
 - [[Redes Neuronales Convolucionales (CNN)]]
-	- Convolución
+	- Convolución ✅ [Deep computer vision using convolutional neural networks]
         
-    - Padding
+    - Padding ✅ [Deep computer vision using convolutional neural networks]
         
-    - Strides
+    - Strides ✅ [Deep computer vision using convolutional neural networks]
         
-    - Pooling
+    - Pooling ✅ [Deep computer vision using convolutional neural networks]
 	    
 -  Aplicaciones 
-	- clasificación
+	- clasificación ✅
 		
-	- segmentación
+	- segmentación ✅
 		
 	- reconocimiento de imagen/video
 		
@@ -241,11 +233,11 @@
 	
 - [[Redes Neuronales Recurrentes (RNN)]]
     
-    - RNN
+    - RNN ✅ [Processing Sequences Using RNNs and CNNs]
         
-    - LSTM
+    - LSTM ✅ [Processing Sequences Using RNNs and CNNs]
         
-    - GRU
+    - GRU ✅ [Processing Sequences Using RNNs and CNNs]
         
 - Mecanismos de atención
 	- Transformers
