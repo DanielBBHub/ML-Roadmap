@@ -1,6 +1,7 @@
 from pathlib import Path
 import urllib.request
-
+import torch.nn.functional as F
+import torch
 # Descarga del 25% de las obras de Sheakespeare
 def download_shakespeare_text():
     path = Path("datasets/shakespeare/shakespeare.txt")
@@ -35,6 +36,20 @@ def encode_text(text):
 
 def decode_text(char_ids):
     return "".join([id_to_char[char_id.item()] for char_id in char_ids])
+
+def next_char(model, text, temperature=1):
+    encoded_text = encode_text(text).unsqueeze(dim=0).to("cuda")
+    with torch.no_grad():
+        Y_logits = model(encoded_text)
+        Y_probas = F.softmax(Y_logits[0, :, -1] / temperature, dim=-1)
+        predicted_char_id = torch.multinomial(Y_probas, num_samples=1).item()
+    return id_to_char[predicted_char_id]
+
+def extend_text(model, text, n_chars=80, temperature=1):
+    for _ in range(n_chars):
+        text += next_char(model, text, temperature)
+    return text
+
 
 #encoded = encode_text("Hello, world!")
 #print("\nPalabra a codificar/descodificar: 'Hello, world!'")

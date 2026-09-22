@@ -94,3 +94,55 @@ También ayuda, simplemente, usar más capas o neuronas en la GRU, entrenar dura
 Aunque el char-RNN solo se entrena para predecir el siguiente carácter, esta tarea aparentemente simple obliga al modelo a aprender también estructura de más alto nivel: para acertar el carácter que sigue a "Great movie, I really " ayuda mucho entender que la frase es positiva, y que por tanto es más probable que continúe con "l" (de *loved*) que con "h" (de *hated*).
 
 De hecho, un estudio de OpenAI de 2017 (Radford et al.) entrenó un modelo similar a gran escala y descubrió que una de sus neuronas actuaba, por sí sola, como un clasificador de sentimiento con resultados comparables a los mejores modelos supervisados de la época — sin haber visto ni una sola etiqueta de sentimiento durante el entrenamiento. Este hallazgo fue una de las motivaciones que impulsaron el preentrenamiento no supervisado en NLP, la idea que dio pie a modelos como los que se explorarán más adelante en este mismo capítulo.
+
+## Análisis de sentimientos de texto
+
+### Clasificación de texto: el dataset IMDb
+
+El análisis de sentimientos es una de las aplicaciones más habituales de la clasificación de texto en PLN: dado un fragmento de texto, el modelo debe decidir a qué categoría pertenece (en este caso, si una reseña expresa una opinión positiva o negativa sobre una película). El conjunto de datos de referencia para esta tarea es **IMDb**, formado por reseñas de cine etiquetadas como positivas o negativas; su papel en PLN es equivalente al de MNIST en clasificación de imágenes: un problema sencillo y muy estudiado que sirve de primer banco de pruebas antes de abordar tareas más complejas.
+
+### Tokenización a nivel de subpalabra
+
+La tokenización a nivel de carácter usada para generar texto (ver la sección anterior) no es la única opción, ni siempre la más adecuada. Para tareas de clasificación sobre lenguaje natural con vocabularios grandes es habitual tokenizar a un nivel intermedio entre el carácter y la palabra: la **tokenización a nivel de subpalabra**. La motivación, explorada en un paper de 2016, es resolver el problema de las palabras desconocidas (*out-of-vocabulary*): un modelo que solo conoce palabras completas no sabe qué hacer ante una palabra que no vio en el entrenamiento, mientras que uno capaz de descomponerla en fragmentos más pequeños y conocidos (por ejemplo, "grandísimo" → "grand" + "ísimo") puede seguir infiriendo algo de su significado a partir de esas partes.
+
+#### El algoritmo BPE
+
+El algoritmo más extendido para construir un vocabulario de subpalabras es **Byte Pair Encoding (BPE)**: se parte del conjunto de entrenamiento troceado en caracteres individuales y, en cada iteración, se busca el par de tokens adyacentes más frecuente y se añade como un nuevo token al vocabulario. El proceso se repite hasta alcanzar el tamaño de vocabulario deseado. El resultado es un vocabulario en el que las palabras muy frecuentes acaban representadas por un único token, mientras que las palabras raras se descomponen en varias subpalabras más comunes.
+
+La librería `tokenizers` de Hugging Face implementa este algoritmo (y sus variantes) de forma eficiente, permitiendo montar un tokenizador combinando tres piezas: el **modelo** de tokenización (el algoritmo en sí, p. ej. BPE), un **pre-tokenizador** (que decide cómo trocear el texto antes de aplicar el algoritmo, p. ej. separando por espacios) y un **entrenador**, que recorre el corpus para construir el vocabulario con el tamaño y los tokens especiales indicados, como `<unk>` para las palabras fuera de vocabulario o `<pad>` para el relleno de secuencias.
+
+Una vez entrenado, el tokenizador puede usarse para codificar texto nuevo en tokens e ids, y también decodificar en sentido inverso; el objeto resultante conserva además los *offsets* de cada token (su posición exacta en el texto original), útiles para tareas que necesitan mapear las predicciones de vuelta al texto original.
+
+### Preparando lotes: padding, truncamiento y attention mask
+
+A diferencia del char-RNN, donde todas las ventanas tenían la misma longitud fija por construcción, las reseñas de IMDb tienen longitudes muy distintas entre sí. Para poder agruparlas en un tensor de lote es necesario que todas las secuencias tengan la misma longitud, lo cual se resuelve con dos mecanismos complementarios:
+
+- **Padding**: rellenar las secuencias más cortas con un token especial (`<pad>`) hasta igualar la longitud de la secuencia más larga del lote (o de un máximo fijado).
+- **Truncamiento**: cortar las secuencias que superen una longitud máxima.
+
+El problema de rellenar con padding es que esos tokens no aportan información real, y el modelo debe saber ignorarlos. Para ello, junto a cada secuencia codificada el tokenizador genera una **attention mask**: un vector de unos y ceros (uno para los tokens reales, cero para el padding) que permite anular la contribución del padding, por ejemplo multiplicando las representaciones internas del modelo por esta máscara. A partir de esa misma máscara también es trivial obtener la longitud real de cada secuencia, simplemente sumando sus unos.
+
+### Variantes de BPE: BBPE, WordPiece y Unigram LM
+
+El BPE básico tiene un problema con los espacios: si el pre-tokenizador los elimina antes de trocear en caracteres, el tokenizador pierde la pista de dónde iban y puede acabar insertándolos en medio de una palabra al reconstruir el texto. La solución es **BBPE** (*byte-level BPE*), que sustituye los espacios por un carácter especial antes de tokenizar y, sobre todo, opera sobre los **bytes** del texto en lugar de sobre caracteres Unicode. Como cualquier texto —incluidos los emoticonos o símbolos poco comunes— puede descomponerse en un número finito de bytes (256 valores posibles), un vocabulario que contenga todos los bytes nunca necesita recurrir a un token desconocido: cualquier carácter, por raro que sea, siempre puede representarse a nivel de byte.
+
+Existen otras variantes del mismo principio que cambian el criterio para decidir qué par de tokens fusionar, o qué tokens conservar:
+
+| Característica | BBPE | WordPiece | Unigram LM |
+|---|---|---|---|
+| **Cómo funciona** | Fusiona los pares más frecuentes | Fusiona los pares que maximizan la verosimilitud de los datos | Elimina los tokens menos probables |
+| **Ventajas** | Rápido, simple, ideal para multilingüe | Buen equilibrio entre eficiencia y calidad de los tokens | El más significativo, secuencias más cortas |
+| **Desventajas** | Puede producir divisiones extrañas | Menos robusto que BBPE para multilingüe | Más lento de entrenar y tokenizar |
+| **Usado por** | GPT, Llama, RoBERTa, BLOOM | BERT, DistilBERT, ELECTRA | T5, ALBERT, mBART |
+
+**WordPiece**, introducida por Google en 2016, sigue el mismo esquema iterativo que BPE pero cambia el criterio de fusión: en vez de añadir el par más frecuente, añade el par con mayor puntuación según
+
+$$
+score(AB) = \frac{frequency(AB)}{frequency(A) \cdot frequency(B)}
+$$
+
+Esta puntuación favorece a los pares que aparecen juntos casi siempre, pero penaliza a los que, aun coincidiendo a menudo, también aparecen por separado en el resto del texto con frecuencia — es decir, prioriza fusiones realmente informativas frente a coincidencias casuales.
+
+**Unigram LM**, por su parte, invierte el proceso: en vez de partir de caracteres sueltos e ir fusionando, arranca con un vocabulario muy grande que incluye prácticamente cualquier palabra, subpalabra y carácter frecuente del corpus, y va eliminando progresivamente los tokens menos útiles hasta alcanzar el tamaño deseado. Parte de la suposición de que el texto se ha generado muestreando tokens del vocabulario de forma independiente unos de otros, lo que le permite estimar qué tokens aportan menos a la verosimilitud del conjunto de entrenamiento y descartarlos.
+
+Estas tres familias de tokenizadores no son alternativas exóticas: son, en la práctica, la capa de preprocesamiento que utilizan la mayoría de los grandes modelos de lenguaje actuales, y la elección de una u otra condiciona directamente el tamaño del vocabulario, la robustez ante distintos idiomas y la calidad de las representaciones que el modelo puede aprender a partir de esos tokens.

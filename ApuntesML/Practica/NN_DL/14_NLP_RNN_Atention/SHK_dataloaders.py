@@ -2,11 +2,11 @@ from tokenizer import download_shakespeare_text
 from Token_dataset import CharDataset
 from torch.utils.data import DataLoader
 from ModelUtl.Train import entrenar_nn
+from ModelUtl.SNL import saveModel
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchmetrics
-from tokenizer import encode_text, decode_text, id_to_char
+from tokenizer import encode_text, decode_text, id_to_char, next_char, extend_text
 from ShakespeareModel import ShakespeareModel
 
 window_length = 50
@@ -29,26 +29,17 @@ las dimensiones utilizadas para guardar estos vectores resultantes de "one-hot e
 mejores: los "embedings"
 """
 
-torch.manual_seed(42) 
+torch.manual_seed(42)
 vocab = sorted(set(shakespeare_text.lower()))
-model = ShakespeareModel(len(vocab)).to("cuda")
+model_hyperparameters = {"vocab_size": len(vocab)}
+model = ShakespeareModel(**model_hyperparameters).to("cuda")
 optimizador = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
 perdida = nn.CrossEntropyLoss()
 metrica = torchmetrics.Accuracy(task="multiclass", num_classes=len(vocab)).to("cuda")
-entrenar_nn(model, optimizador, perdida, metrica, train_loader, valid_loader, 50, "cuda")
+mejor_modelo = entrenar_nn(model, optimizador, perdida, metrica, train_loader, valid_loader, 50, "cuda")
 
-def next_char(model, text, temperature=1):
-    encoded_text = encode_text(text).unsqueeze(dim=0).to("cuda")
-    with torch.no_grad():
-        Y_logits = model(encoded_text)
-        Y_probas = F.softmax(Y_logits[0, :, -1] / temperature, dim=-1)
-        predicted_char_id = torch.multinomial(Y_probas, num_samples=1).item()
-    return id_to_char[predicted_char_id]
-
-def extend_text(model, text, n_chars=80, temperature=1):
-    for _ in range(n_chars):
-        text += next_char(model, text, temperature)
-    return text
+model.load_state_dict(mejor_modelo)
+saveModel(model, "shakespeare_model", model_hyperparameters)
 
 model.eval()
 text = "To be or not to b"
