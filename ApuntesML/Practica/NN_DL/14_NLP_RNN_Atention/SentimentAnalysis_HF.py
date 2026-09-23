@@ -1,5 +1,6 @@
 from datasets import load_dataset
 import tokenizers
+import torch
 
 """ 
 El analisis de sentimientos es una de las aplicaciones más comunes de la clasificacion de texto mediante PNL, en este caso vamos a hacerlo sobre el dataset de IMDb, que es 
@@ -7,7 +8,7 @@ el equivalente al MINST para la calsificacion de imagenes; el "hola mundo" del d
 """
 
 ## Importar y separar el conjunto de datos en entrenamiento, validación y test
-imdb_dataset = load_dataset("imdb")
+imdb_dataset = load_dataset("stanfordnlp/imdb")
 split = imdb_dataset["train"].train_test_split(train_size=0.8, seed=42)
 imdb_train_set, imdb_valid_set = split["train"], split["test"]
 imdb_test_set = imdb_dataset["test"]
@@ -19,12 +20,7 @@ imdb_train_set[16]["text"]
 imdb_train_set[16]["label"]
 
 # Tokenizacion utilizando la libreria de Hugging Face
-""" 
-En un paper de 2016 [ https://homl.info/rarewords ] se exploran varios metodos para tokenizar/destokenizar el texto a nivel inferior a las palabras. De esta manera en el caso de que 
-hubiese una palabra nueva para el modelo pudiese inferir el significado (grandisimo -> grand (grande) + isimo(sufijo) ). Una de estas tecnicas se basa en BPE (bite par encoding)
-la cual separa todo el conjunto de entrenamiento en caracteres individuales y en cada iteracion encuentra el par de tokens adyacentes mas comunes, añadiendolo al vocabulario hasta llegar
-a un tamaño deseado. La libreria de Huggin Face implementa de manera eficiente varios algoritmos de tokenizacion, incluido el anterior.
-"""
+
 ## Creamos un modelo BPE especificando un token desconocido "<unk>" que se utilizara en caso de encontrar una palabra que no aparezca
 bpe_model = tokenizers.models.BPE(unk_token="<unk>")
 bpe_tokenizer = tokenizers.Tokenizer(bpe_model)
@@ -43,9 +39,9 @@ bpe_tokenizer.train_from_iterator(train_reviews, bpe_trainer)
 some_review = "what an awesome movie!"
 bpe_encoding = bpe_tokenizer.encode(some_review)
 
-print(f"\nTexto codificado en tokens{bpe_encoding.tokens}")
+#print(f"\nTexto codificado en tokens{bpe_encoding.tokens}")
 bpe_token_ids = bpe_encoding.ids
-print(f"Ids del texto codificado en tokens{bpe_token_ids}")
+#print(f"Ids del texto codificado en tokens{bpe_token_ids}")
 """ 
 ['what', 'an', 'aw', 'es', 'ome', 'movie', '!']
 [303, 139, 373, 149, 240, 211, 4, 1]
@@ -89,35 +85,111 @@ Por otro lado, a veces es interesante tener la lista de longitudes de las secuen
 attention_mask = torch.tensor([encoding.attention_mask for encoding in bpe_encodings])
 lengths = attention_mask.sum(dim=-1)
 
+# Construyendo y entrenando un modelo de analisis de sentimientos
+
+from tokenizer import download_shakespeare_text
+from Token_dataset import CharDataset
+from torch.utils.data import DataLoader
+
+window_length = 50
+batch_size = 512 
+shakespeare_text = download_shakespeare_text()
+train_set = CharDataset(shakespeare_text[:1_000_000], window_length)
+valid_set = CharDataset(shakespeare_text[1_000_000:1_060_000], window_length)
+test_set = CharDataset(shakespeare_text[1_060_000:], window_length)
+
 """ 
-En este ejemplo es visible que el tokenizador no ha tratado muy bien los espacios, partiendo "awesome" en "aw es ome" y "movie!" en "movie !" y esto es por que el pretokenizador 
-Whitespace ha eliminado todos los espacios, con lo que el tokenizador no sabe donde debe poner los espacios y los coloca en medio de los tokens. Para arreglar este problema podemos 
-reemplazar Whitespace por ByteLevel el cual reemplaza los espacios con un caracter especial 'Ġ' de manera que el modelo tokenizador no le pierde la pista a los espacios. En el 
-caso anterior el resultado de tokenizar sería el siguiente: 'Ġwhat Ġan Ġaw es ome Ġmovie !', lo cual estaria casi perfecto, si no fuese que al remplazar los caracteres especiales por
-espacios, habría uno al principio que no debería estar ahi.
-
-Por otro lado, si el texto contuviese emoticonos tampoco sería capaz de tokenizarlos. ByteLevel permite que el modelo BPE funcione a nivel de bytes, en vez de caracters, con lo que 
-el emoticono sera convertido a cuatro bytes con el encoding UTF-8, con lo que el modelo tokenizador nunca dejara de mostrar un token desconocido si su vocabulario contiene todos los 256 bytes posibles,
-ya que cualquier texto puede desgranarse en sus bytes individuales. Esto se conoce como BBPE (byte-level BPE).
-
-Otra variantes de BPR es WordPiece, introducida por Google en 2016 [ https://homl.info/wordpiece ], el cual en vez de agregar el par de tokens mas comun al vocabulario en cada iteracion, añade el
-par con mayor puntuacion. Esta puntuacion sigue la siguiente ecuacion:
-
-$$
-score(AB) = \frac{frequency(AB)}{frequency(A)*frequency(B)}
-$$
-
-Esta forma de puntuar mejora la puntuacion de los tokens que se encuentran juntos pero penaliza los que, aun estando juntos, tambien se encuentran por separado en el texto. Para entrenar un tokenizador
-WordPiece se puede utilizar el mismo codigo que el anterior, modificando el modelo BPE por WordPiece y BpeTrainer por WordPieceTrainer.
-
-Otro algoritmo popular es Unigram LM, introducido en 2018 [ https://homl.info/subword ], el cual empieza con un vocabulario muy grande que contiene cada palabra, subpalabra y caracter frecuente en el
-texto de entrenamiento y gradualmente va eliminadno los tokens menos utiles, hasta llegar a un tamaño de vocabulario deseado. Este algoritmo parte de la suposicion que el texto ha sido muestreado
-de manera aleatoria del vocabulario, un token detras de otro y que cada token se ha muestreado independientemente de los otros.
-
-| Característica | BBPE | WordPiece | Unigram LM |
-|---|---|---|---|
-| **Cómo funciona** | Fusiona los pares más frecuentes | Fusiona los pares que maximizan la verosimilitud de los datos | Elimina los tokens menos probables |
-| **Ventajas** | Rápido, simple, ideal para multilingüe | Buen equilibrio entre eficiencia y calidad de los tokens | El más significativo, secuencias más cortas |
-| **Desventajas** | Puede producir divisiones extrañas | Menos robusto que BBPE para multilingüe | Más lento de entrenar y tokenizar |
-| **Usado por** | GPT, Llama, RoBERTa, BLOOM | BERT, DistilBERT, ELECTRA | T5, ALBERT, mBART |
+El modelo se ha de entrenar utilizando lotes de reseñas tokenizadas, pero estos datasets no se han tokenizado. El proceso es tan simple como manejar la tokenizacion en los dataloaders, utilizando 
+el argumento collate_fn; el DataLoader llamara a esta funcion para cada lote, pasandole una lista de muestras del conjunto de datos, para que nuestra funcion reciba este lote, tokenize las reseñas, las trunque
+y meta padding y devuelva un BatchEncoding que contenga tensores con los token ID y las mascaras de atencion, asi como otro tensor con las etiquetas.
 """
+import transformers
+bert_tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
+def collate_fn(batch, tokenizer=bert_tokenizer):
+    reviews = [review["text"] for review in batch]
+    labels = [[review["label"]] for review in batch]
+    encodings = tokenizer(reviews, padding=True, truncation=True,
+    max_length=200, return_tensors="pt")
+    labels = torch.tensor(labels, dtype=torch.float32)
+    return encodings, labels
+
+batch_size = 256
+imdb_train_loader = DataLoader(imdb_train_set, batch_size=batch_size,
+collate_fn=collate_fn, shuffle=True)
+imdb_valid_loader = DataLoader(imdb_valid_set, batch_size=batch_size,collate_fn=collate_fn)
+imdb_test_loader = DataLoader(imdb_test_set, batch_size=batch_size,
+collate_fn=collate_fn)
+
+## Entrenamos los dos modelos (con padding normal y con secuencias empaquetadas) con los mismos
+## hiperparametros para comparar como afecta el padding al desempeño
+
+from sentiment_analysis_model import SentimentAnalysisModel, SentimentAnalysisModelPacked, SentimentAnalysisModelPreEmbeds, SentimentAnalysisModelBert
+from ModelUtl.Train import entrenar_nn, eval_entrenamiento
+from ModelUtl.SNL import saveModel
+from torchmetrics.classification import BinaryAccuracy
+import torch.nn as nn
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+bert_model = transformers.AutoModel.from_pretrained("bert-base-uncased")
+
+vocab_size = bert_tokenizer.vocab_size
+pad_id = bert_tokenizer.pad_token_id
+n_iter = 40
+
+torch.manual_seed(42)
+model_padded = SentimentAnalysisModel(vocab_size, pad_id=pad_id).to(device)
+optimizador_padded = torch.optim.Adam(model_padded.parameters(), lr=1e-3)
+perdida_padded = nn.BCEWithLogitsLoss()
+metrica_padded = BinaryAccuracy().to(device)
+mejor_modelo_padded = entrenar_nn(model_padded, optimizador_padded, perdida_padded, metrica_padded,
+imdb_train_loader, imdb_valid_loader, n_iter, device)
+
+torch.manual_seed(42)
+model_packed = SentimentAnalysisModelPacked(vocab_size, pad_id=pad_id).to(device)
+optimizador_packed = torch.optim.Adam(model_packed.parameters(), lr=1e-3)
+perdida_packed = nn.BCEWithLogitsLoss()
+metrica_packed = BinaryAccuracy().to(device)
+mejor_modelo_packed = entrenar_nn(model_packed, optimizador_packed, perdida_packed, metrica_packed,
+imdb_train_loader, imdb_valid_loader, n_iter, device)
+
+torch.manual_seed(42)
+model_preembeds = SentimentAnalysisModelPreEmbeds(bert_model.embeddings.word_embeddings).to(device)
+optimizador_preembeds = torch.optim.Adam(model_preembeds.parameters(), lr=1e-3)
+perdida_preembeds = nn.BCEWithLogitsLoss()
+metrica_preembeds = BinaryAccuracy().to(device)
+mejor_modelo_preembeds = entrenar_nn(model_preembeds, optimizador_preembeds, perdida_preembeds, metrica_preembeds,
+imdb_train_loader, imdb_valid_loader, n_iter, device)
+
+torch.manual_seed(42)
+model_bert = SentimentAnalysisModelBert().to(device)
+# Solo la GRU y la capa lineal tienen requires_grad=True (self.bert se congela
+# dentro de la propia clase), asi que se filtran los parametros del optimizador
+# para que no incluya los de BERT: evita gastar memoria y computo manteniendo
+# estado del optimizador para pesos que nunca se van a actualizar.
+optimizador_bert = torch.optim.Adam(
+    (p for p in model_bert.parameters() if p.requires_grad), lr=1e-3)
+perdida_bert = nn.BCEWithLogitsLoss()
+metrica_bert = BinaryAccuracy().to(device)
+mejor_modelo_bert = entrenar_nn(model_bert, optimizador_bert, perdida_bert, metrica_bert,
+imdb_train_loader, imdb_valid_loader, n_iter, device)
+
+## Cargamos los mejores pesos de cada uno y comparamos la precision final en validacion
+model_padded.load_state_dict(mejor_modelo_padded)
+precision_padded = eval_entrenamiento(model_padded, imdb_valid_loader, metrica_padded, device)
+
+model_packed.load_state_dict(mejor_modelo_packed)
+precision_packed = eval_entrenamiento(model_packed, imdb_valid_loader, metrica_packed, device)
+saveModel(model_packed, "sentiment_packed", {"vocab_size": vocab_size, "pad_id": pad_id})
+
+model_preembeds.load_state_dict(mejor_modelo_preembeds)
+precision_preembeds = eval_entrenamiento(model_preembeds, imdb_valid_loader, metrica_preembeds, device)
+saveModel(model_preembeds, "sentiment_preembeds", {"n_layers": 2, "hidden_dim": 64, "dropout": 0.2})
+
+model_bert.load_state_dict(mejor_modelo_bert)
+precision_bert = eval_entrenamiento(model_bert, imdb_valid_loader, metrica_bert, device)
+saveModel(model_bert, "sentiment_bert", {"n_layers": 2, "hidden_dim": 64, "dropout": 0.2})
+
+print(f"Precision validacion (padding sin empaquetar): {precision_padded.item():.4f}")
+print(f"Precision validacion (secuencias empaquetadas): {precision_packed.item():.4f}")
+print(f"Precision validacion (embeddings preentrenados de BERT): {precision_preembeds.item():.4f}")
+print(f"Precision validacion (BERT congelado + GRU): {precision_bert.item():.4f}")
