@@ -205,10 +205,84 @@ El resto de piezas de la API tienen un equivalente directo en lo ya visto en la 
 
 Con todas estas piezas montadas en un objeto `Trainer`, todo el bucle de entrenamiento (y la evaluación periódica en validación) queda reducido a una única llamada: `trainer.train()`.
 
-### HF_pipelines
+### Pipelines de Hugging Face
 
 Si `Trainer` automatiza el *entrenamiento*, la función **`pipeline()`** automatiza el extremo opuesto: usar un modelo ya entrenado y afinado por otros, sin entrenar ni afinar nada en absoluto. Es el punto final de la progresión de esta práctica, que ha ido subiendo el nivel de reutilización paso a paso — modelo entrenado desde cero, luego solo los embeddings de BERT reutilizados, después una GRU afinada sobre BERT congelado, luego BERT completo afinado con `Trainer` — hasta llegar aquí, donde ni siquiera hace falta un paso de entrenamiento propio.
 
 `pipeline("sentiment-analysis", model=...)` empaqueta en un único objeto el modelo, su tokenizador y todo el pre/postprocesado necesario para una tarea concreta; si no se especifica el argumento `model`, usaría el modelo por defecto asociado a esa tarea. Aquí se elige explícitamente `distilbert-base-uncased-finetuned-sst-2-english`: una versión reducida de BERT (**DistilBERT**) preentrenada sobre la Wikipedia en inglés y un corpus de libros, y afinada sobre SST-2 (Stanford Sentiment Treebank), una tarea de clasificación de sentimiento distinta de IMDb. Pese a no haber visto una sola reseña de IMDb durante su afinado, este modelo alcanza un 88.2% de precisión sobre el conjunto de validación de IMDb, una muestra de hasta qué punto puede generalizar un modelo de lenguaje bien preentrenado y afinado sobre una tarea relacionada.
 
 El pipeline gestiona automáticamente varios detalles que en el resto de la práctica había que resolver a mano: usa la GPU si hay una disponible (con varias GPUs, se elige cuál usar mediante el argumento `device`), y los modelos de `transformers` se cargan siempre en modo evaluación por defecto, sin necesidad de llamar a `.eval()` como se hacía con los modelos propios. El resultado de aplicar el pipeline a un lote de reseñas es una lista con una etiqueta (`"POSITIVE"` o `"NEGATIVE"`) y un `score` por cada una: la probabilidad que el modelo asigna a *esa* etiqueta concreta, no a la clase positiva. Al tratarse de un problema binario, ese `score` nunca puede ser inferior a 0.5, porque si lo fuera el modelo habría elegido directamente la otra etiqueta.
+
+## Red encoder-decoder para traducción
+
+En resumidas cuentas, la arquitectura de un encoder-decoder para esta tarea recibe una secuencia que representa una frase en el idioma original y genera un resultado otra secuencia con la frase traducida al idioma objetivo, formando un modelo seq2seq. El decoder en la fase de entrenamiento recibe como entrada la salida que debería haber tenido, retrasada un paso temporal, sin importar que es lo que ha generado como resultado. A esto se le conoce como "teacher forcing", es una tecnica que acelera el entrenamiento y mejora el desempeño del modelo.El decoder recibe como primer token un SoS o BoS (start/beggining of sequence) "<s>" y se espera que acabe el texto con un EoS (end of sequence) "</s>"
+
+Cada token se representa en un inicio por un ID que recoge la capa de incrustacion para devolver el token embedding y utilizar esto como entrada del encoder y del decoder.
+
+A cada paso, la capa densa de salida del decoder devuelve una puntuación logit para cada token del vocabulario de salida (idioma objetivo) y si pasas estos logits por una capa softmax obtienes la probabilidad estimada para cada token que haya.
+
+Es importante resaltar que en el momento de la inferencia ya no habra que darle como entrada el texto etiqueta al decoder si no que habra que darle la palabra que acaba de generar en el paso anteriro, haciendo un embedding lookup.
+
+### El conjunto de datos y un tokenizador compartido
+
+Para entrenar un traductor hace falta un **corpus paralelo**: pares de frases en las que cada frase en inglés viene acompañada de su traducción al español. Aquí se usa el subconjunto inglés-español de **Tatoeba**, una colección de frases cortas y cotidianas traducidas por voluntarios. Como el dataset solo trae un conjunto de validación y otro de test ya definidos, el de validación original se divide 80/20 para sacar de él los conjuntos de entrenamiento y validación propios, con una semilla fija para que la partición sea reproducible.
+
+En lugar de entrenar un tokenizador para cada idioma, se entrena **un único tokenizador BPE sobre ambos idiomas a la vez**, alimentándolo con las frases fuente y objetivo de cada par (el algoritmo es el mismo que se explicó en la sección de tokenización a nivel de subpalabra). Esto es viable porque el inglés y el español comparten alfabeto y muchísimas subpalabras: raíces de origen latino (*nation*/*nación*), nombres propios, números o signos de puntuación. El resultado es un **vocabulario compartido** de 10 000 tokens, lo que simplifica el modelo: una única tabla de embeddings sirve tanto para la entrada del encoder como para la del decoder, y la capa de salida elige entre ese mismo vocabulario. A los tokens especiales ya conocidos (`<pad>` y `<unk>`) se añaden `<s>` y `</s>`, que marcan el inicio y el final de la frase traducida.
+
+### Preparando los pares: el desplazamiento del teacher forcing
+
+El teacher forcing que se describía más arriba se materializa en cómo se construye cada lote. La frase española se envuelve en `<s> ... </s>` y se tokeniza; a partir de esa secuencia se obtienen dos versiones desplazadas un token entre sí:
+
+- **Entrada del decoder**: la secuencia sin su último token, es decir, empezando por `<s>`.
+- **Etiquetas**: la secuencia sin su primer token, es decir, terminando en `</s>`.
+
+Así, en cada posición *t* el decoder recibe el token correcto *t* y debe predecir el token *t+1*: al ver `<s>` debe predecir la primera palabra, al ver la primera debe predecir la segunda, y así hasta predecir `</s>` al ver la última. Es exactamente el mismo esquema de "predecir el siguiente token" del char-RNN de Shakespeare, con la diferencia de que ahora la predicción está **condicionada** por la frase de origen.
+
+Cada lote agrupa cuatro tensores (IDs y *attention mask* de la frase fuente, IDs y máscara de la frase objetivo) que se guardan juntos en una tupla con nombre con su propio método `.to(device)`, para poder mover al dispositivo toda la entrada del modelo de una vez, igual que se haría con un único tensor. El padding se aplica por lote, hasta la frase más larga de cada uno.
+
+### La arquitectura del modelo
+
+El modelo tiene cuatro piezas:
+
+1. **Una capa de embedding compartida**, con `padding_idx` para que el token de relleno no aprenda nada (ver la sección de análisis de sentimientos).
+2. **El encoder**, una GRU de dos capas que lee la frase en inglés. Recibe la frase como **secuencia empaquetada**, de modo que se detiene justo en el último token real de cada frase. De su salida solo interesan los **estados ocultos finales de todas las capas**, que forman el resumen de la frase completa: es la misma idea que el modelo secuencia-a-vector de sentimiento, pero conservando el estado de cada capa y no solo el de la última.
+3. **El decoder**, otra GRU con el mismo número de capas y el mismo tamaño de estado oculto. Esa coincidencia es obligatoria, porque el decoder no arranca con un estado inicial a cero como hasta ahora, sino con el estado final del encoder, capa a capa. Es el único canal por el que la información de la frase en inglés llega al decoder, así que ese estado hace de **vector de contexto**.
+4. **Una capa lineal de salida** que transforma el estado del decoder en cada paso en un logit por cada token del vocabulario. Como en el char-RNN, la salida se permuta para dejar la dimensión de clases en segunda posición, que es donde la esperan `CrossEntropyLoss` y las métricas de `torchmetrics`.
+
+Esta arquitectura tiene un **cuello de botella** evidente: toda la frase de origen, sea de tres palabras o de treinta, se comprime en un vector de tamaño fijo, y el decoder no tiene forma de volver a consultar una palabra concreta del original mientras traduce. En frases cortas funciona razonablemente, pero la calidad cae a medida que la frase se alarga, porque el vector de contexto no da abasto para retener todos los detalles.
+
+### Entrenamiento: la pérdida y por qué la exactitud se queda corta
+
+Traducir es, token a token, un problema de **clasificación multiclase** sobre el vocabulario, así que la pérdida es `CrossEntropyLoss`. Se configura con `ignore_index=0` (el ID de `<pad>`) para que las posiciones de relleno de las etiquetas no contribuyan a la pérdida: sin esto, el modelo "aprendería" a predecir padding y la pérdida quedaría falseada por la proporción de relleno de cada lote.
+
+La métrica más inmediata es la **exactitud por token** (`Accuracy` multiclase, también con `ignore_index=0`), pero mide mal la calidad de una traducción, por tres motivos:
+
+- Se calcula con **teacher forcing**: el modelo siempre ve los tokens correctos anteriores. En inferencia se alimenta de sus propias predicciones, y un error temprano arrastra a los siguientes (a este desajuste entre entrenamiento e inferencia se le llama **exposure bias**).
+- Exige el **token exacto en la posición exacta**, cuando una frase admite muchas traducciones válidas: "me encanta el fútbol" cuenta como fallo si la referencia es "me gusta el fútbol".
+- Cuenta **subtokens BPE**, no palabras.
+
+Por eso en traducción automática se usa **BLEU** (*Bilingual Evaluation Understudy*), que se calcula sobre traducciones **generadas de verdad**, de forma autorregresiva. BLEU mide qué proporción de los n-gramas de la traducción generada (de 1 a 4 tokens) aparecen en la traducción de referencia, combina esas cuatro precisiones con una media geométrica y aplica una **penalización por brevedad**, para que no salga rentable generar frases muy cortas con pocas palabras pero todas acertadas. El resultado va de 0 a 1 (en los artículos suele darse multiplicado por 100). Como orientación: por debajo de 0.1 la traducción es casi inútil, entre 0.2 y 0.3 se entiende la idea con errores importantes, y a partir de 0.4 se considera de alta calidad. Ni siquiera un traductor humano suele pasar de 0.6, porque solo hay una referencia contra la que comparar.
+
+Para usar BLEU como criterio de validación y de parada temprana, el bucle de entrenamiento sigue entrenando con teacher forcing y pérdida, pero al final de cada época genera las traducciones del conjunto de validación con **decodificación voraz**: en cada paso se elige el token más probable y se le devuelve al decoder como entrada del paso siguiente, hasta que genera `</s>`. Validar así es bastante más lento que calcular la exactitud, porque hay que generar la traducción token a token en vez de hacer una única pasada hacia delante. Un matiz de esta implementación es que tanto las traducciones generadas como las de referencia se reconstruyen desde sus IDs con el mismo tokenizador. Como el pre-tokenizador `Whitespace` no guarda los espacios originales, el texto resultante queda troceado en subtokens y signos de puntuación sueltos. La comparación entre épocas es coherente, pero la cifra sale algo inflada respecto al BLEU que se publica, que se calcula sobre el texto original.
+
+## Busqueda Beam
+
+Para obtener la traducción de una frase entera llamamos al modelo varias veces, generando una palabra cada vez. Esto significa que si el modelo llega a equivocarse en algun punto, arrastrará ese error el resto de la traducción. Por ejemplo: Si queremos traducir "I love football" el modelo puede empezar generando "Me" y puede que la siguiente palabra sea "gustan", lo cual en muchos contextos es una buena manera de traducir "I love", pero este error se arrastra para la tercera palabra la cual podría ser "el", pero como no concuerda el singular con "gustan" el modelo se ve forzado a generar "los" y remata la frase con "futbolistas", con lo que el resultado de traducir "I love footbal" es "Me gustan los futbolistas".
+
+Una de las soluciones más comunes para evitar que un error en algún punto de la traducción conlleve una traducción erronea es utilizar "beam search". Con este método se tiene en cuenta una lista pequeña de las k propuestas más prometedoras y en cada punto de tiempo el decoder intenta extender cad una en una palabra, guardandose solo las k mas prometedoras. Este parametro k es la anchura del haz.
+
+Cuando se generan palabras y se buscan las más prometedoras para continuar o acabar la oración se hace un calculo en el que se multiplica la probabilidad condicional estimada de cada palabra por la probabilidad estimada de la frase que completa. Este proceso se repite, haciendo que el modelo prediga la siguiente palabra en cada una de las k posibilidades eliminando las que no cumplen el corte.
+
+Finalmente, aun que esto mejora la generación de texto, solo sirve para aumentar la precisión de traducción sobre oraciones cortas. Si se extiende demasiado en longitud la secuencia, dada la poca memoria a corto plazo de la que sufren las RNNs, no conseguirá traducir bien la frase por completo. Para esto, se desarrollaron los mecanismos de atención.
+
+## Mecanismos de atención
+
+En un paper de 2014 [ https://homl.info/attention ] se introdujo una técnica que permitia al decoder concentrarse en las palabras apropiadas (como estaban codificadas por el encoder) en cada paso de tiempo. Por ejemplo, en el punto temporal donde el decoder necesita generar la palabra "futbol", concentrará su atención en la palabra "football". Esto significa que el camino de una palabra entrante a su traducción era mucho más corta, con lo que la limitación de memória a corto plazo impactaba mucho menos. Esta idea permitió un avanze significativo en todas las ramas en las que se aplicaba deep learning.
+
+![Encoder decoder con atención](img/encoder_decoder_atention.png)
+
+A la izquierda en este diagrama podemos ver el encoder-decoder. Se puede ver que en vez de enviar unicamente el estado oculto final del encoder asi como la palabra etiquetada anterior en cada momento temporal, ahora se envia todas las salidas del encoder. Como el decoder no es capaz de lidiar con todas las salidas a la vez, se hace una suma; en cada paso temporal las células de memória calculan una suma ponderada de todas las salidas, determinando así que palabras prestar su atención el decoder. El peso $\alpha_{(t,i)}$ es el peso de la salida $i$ del encoder en el paso del tiempo $t$ (Por ejemplo, si el peso $\alpha_{(3,2)}$ es mayor a $\alpha_{(3,0)}$ y $\alpha_{(3,1)}$ el decoder concentrará su atencion en la tercera palabra de la frase, "football" en este caso). Dicho esto, el resto del decoder funcionará como antes, en cada paso temporal recibe las entradas, el estado oculto de pasos temporales anteriores y la palabra etiquetada del paso anterior o la salida del paso anterior, dependiendo si esta entrenando o infiriendo.
+
+Por otro lado, a la derecha podemos ver una red neuronal llamada modelo de alineamiento o capa de atención. Esta red se ocupará de generar los valores de los pesos durante el entrenamiento. Todo empieza con una capa densa que recoge como entrada cada una de las salidas del encoder, su último estado oculto y genera una puntuación para cada encoder $e_{(3,2)}$, el cual medirá como de bien está alineada la salida del encoder con los estados ocultos previos del decoder. Finalmente todas las puntuaciones pasan por una capa softmax para obtener el peso final para cada salida del encoder.
+
+Por otro lado, en un paper de 2015 [ https://homl.info/luongattention ] se presento Luong attention o atención multiplicativa, dado que el objetivo del modelo de alineación es medir las similitudes entre las salidas del encoder y los estados ocultos previos del decoder, se propuso calcular el producto elemento por elemento de los dos vectores. Para que esto sea posible los vectores tenian que tener la misma dimensionalidad. El resultado devuelve una puntuación, la cual pasa por una capa softmax que devuelve los pesos finales. También se propuso utilizar el estado oculto del decoder en el paso temporal actual para calcular el vector de atención, el cual es concatenado con el estado oculto del decoder para formar un estado oculto de atención y utilizarlo para predecir el siguiente token. Esto simplifica y acelera el proceso permitiendo que el encoder y el decoder operen independientemente antes de que se aplique la atención.
