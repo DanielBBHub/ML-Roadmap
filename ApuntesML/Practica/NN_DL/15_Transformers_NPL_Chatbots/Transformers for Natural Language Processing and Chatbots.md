@@ -73,6 +73,14 @@ Donde:
 - $Q$ es la matriz que representa la query (p.j. una frase en ingles). Su forma es $[L_q, d_q]$ donde $L_q$ es la longitud de la query y $d_q$ es la dimensionalidad de la query
 - $K$ es la matriz representando una clave. Su forma $[L_k, d_k]$ donde $L_k$ es la longitud de la clave y $d_k$ es la dimensionalidad de la clave
 - $V$ es una matriz representando un valor. Su forma $[L_v, d_v]$ donde $L_v$ es la longitud del valor y $d_v$ es la dimensionalidad del valor.
-- La forma de $QK^T$ es $[L_q, d_k]$: contiene una puntuación de similitud para cada para query-clave. Para evitar que la matriz sea enorme, la secuencia de entrada no tiene que ser demasiado larga, ya que se toparía con el problema de la ventana de contexto cuadrática. La función softmax se aplica a cada fila, resultando en una forma $[L_q, d_v]$, donde hay una fila por cada token de la query y cada fila representa el resultado de la query: una suma ponderada de los valores de los tokens, favoreciendo los valores de los tokens cuyos tokens clave se alinean más con el token de la query
+- La forma de $QK^T$ es $[L_q, L_k]$: contiene una puntuación de similitud para cada para query-clave. Para evitar que la matriz sea enorme, la secuencia de entrada no tiene que ser demasiado larga, ya que se toparía con el problema de la ventana de contexto cuadrática. La función softmax se aplica a cada fila, resultando en una forma $[L_q, d_v]$, donde hay una fila por cada token de la query y cada fila representa el resultado de la query: una suma ponderada de los valores de los tokens, favoreciendo los valores de los tokens cuyos tokens clave se alinean más con el token de la query
 - El facto de escalado es $\frac{1}{\sqrt{d_k}}$ escala hacia abajo la similitud de las puntuaciones para evitar sturar la función softmax, lo cual llevaria a gradientes muy pequeños.
 - Es posible enmascarar algunos pares clave-valor añadiendo valores negativos muy grandes a las puntuaciones de similitud correspondiende antes de calcular el softmax
+
+Ahora miraremos a la capa de atención con multiples cabezas.
+
+![capa de atención con multiples cabezas](img/capa%20de%20atención%20con%20multiples%20cabezas.png)
+
+Como se puede ver son una pila de capas de atención de productos punto escalados llamadas cabezas de atención, cada una precedida por una transformación lineal de valores, llaves y querys. La salida de todas las cabezas de atención son concatenadas y pasan por una transformación lineal final.
+
+Ahora viene el porque: en una oración como "I like football", "like" tiene que ser codificada por el encoder de manera que guarde todo el significado en el contexto de la frase, asi como su posición. El tema es que si solo utilizasemos una capa de atención, tendriamos que codificar todas las características en un solo vector, con lo que las capas separan estas representaciones de query,key,value en multiples cabezas, para que cada una pueda centrarse en características especificas del token. La "decisión" de que cabeza se ocupa de que la toma la primera capa lineal, mientras que la capa lineal final se encarga de reorganizar la representación de las características como decida.
