@@ -84,3 +84,32 @@ Ahora miraremos a la capa de atención con multiples cabezas.
 Como se puede ver son una pila de capas de atención de productos punto escalados llamadas cabezas de atención, cada una precedida por una transformación lineal de valores, llaves y querys. La salida de todas las cabezas de atención son concatenadas y pasan por una transformación lineal final.
 
 Ahora viene el porque: en una oración como "I like football", "like" tiene que ser codificada por el encoder de manera que guarde todo el significado en el contexto de la frase, asi como su posición. El tema es que si solo utilizasemos una capa de atención, tendriamos que codificar todas las características en un solo vector, con lo que las capas separan estas representaciones de query,key,value en multiples cabezas, para que cada una pueda centrarse en características especificas del token. La "decisión" de que cabeza se ocupa de que la toma la primera capa lineal, mientras que la capa lineal final se encarga de reorganizar la representación de las características como decida.
+
+## Transformers de solo codificacion para entendimiento del lenguaje natural
+
+Cuando, en 2018 [ https://homl.info/bert ], Google lanzo BERT, probó al mundo que los transformers solo de codificación pueden realizar un amplio abanico de tareas, como clasificación de oraciones, tokens, resolver preguntas test, ... Además de confirmar la efectividad del preentrenamiento autosupervisado sobre un gran bloque de texto para transfer learning.
+
+### Arquitectura de BERT
+
+La arquitectura de BERT es casi identica al transformer encoder original, con tres grandes diferencias:
+1. Tamaño. El modelo base tiene 12 bloques de encoders, 12 cabezas de atención y embeddings de 768 dimensiones. También utiliza embeddings posicionales entrenables y soporta frases de entrada de hasta 512 tokens.
+
+2. Aplica LN justo antes de cada subcapa (sea atención o lineal), lo que se conoce como pre-LN, ya que se asegura que las entradas de cada subcapa esten normalizadas, así estabilizando el entrenamiento y reduciendo la sensibilidad a la inicialización de pesos.
+
+3. Permite separar las oraciones de entrada en dos segmentos. Esto es util para tareas que requieran una pareja de oraciones de entrada, como inferencia sobre lenguaje natural o contestar preguntas de respuesta múltiple. Esto se puede conseguir utilizando un token de separación en cada oración y luego concatenarlas.
+
+### Preentrenamiento de BERT
+
+Se propusieron dos tareas de preentrenamiento autosupervisado
+
+**Masked languaje model (MLM)**
+-
+Cada token en una oración tiene un 15% de probabilidades de ser reemplazado con un token de máscara y el modelo es entrenado para predecir cuales eran los tokens originales. Si tenemos la oración "Se lo pasó genial en el cumpleaños" la frase que le entraría al modelo sería "Se lo pasó [mascara] en [mascara] cumpleaños" y se calcularía la pérdida sobre estos tokens mascara. Para concretar, algunos de los tokens enmascarados no son realmente así; 10% son reemplazados por tokens aleatorios y otro 10% no se reemplazan por nada. Esto ayuda a que el modelo tenga un buen desempeño aun que no haya tokens y en cuanto a los tokens que no se reemplazan, estos hacen la predicción trivial, lo cual hace que el modelo "preste atención" al token de entrada que está en la posición del token predecido.
+
+**Next sentence prediction (NSP)**
+-
+Se entrena al modelo para predecir si dos frases estan seguidas una de la otra. Esta es una tarea de clasificación binaria, en la cual se implementó un nuevo token de clase [CLS]: este token se inserta al principio (posición 0, segmento 0) y durante el entrenamiento del encoder este token se pasa por una cabeza de clasificación binaria.
+
+Se entrenó BERT con estos dos métodos a la vez, con un gran volumen de textos, con el objetivo de que con NSP se obtuviese una buena representación de la frase de entrada con el embedding contextualizado de tokens, aunque luego se demostró que calcular las medias de los embeddings contextualizados generaba mejores resultados.
+
+### Ajustando(fine-tuning) BERT

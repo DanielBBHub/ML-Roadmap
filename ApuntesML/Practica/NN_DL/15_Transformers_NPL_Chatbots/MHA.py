@@ -1,3 +1,5 @@
+import torch
+import torch.nn as nn
 # Objetivo del script: implementar desde cero la capa de atención multicabeza (MHA) del
 # Transformer. Aplica la atención de producto punto escalado, softmax(QK^T / sqrt(d_k)) V,
 # en h cabezas en paralelo y luego concatena sus salidas y las mezcla con una capa lineal.
