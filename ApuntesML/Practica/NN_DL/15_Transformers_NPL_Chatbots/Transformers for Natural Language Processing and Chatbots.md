@@ -113,3 +113,62 @@ Se entrena al modelo para predecir si dos frases estan seguidas una de la otra. 
 Se entrenó BERT con estos dos métodos a la vez, con un gran volumen de textos, con el objetivo de que con NSP se obtuviese una buena representación de la frase de entrada con el embedding contextualizado de tokens, aunque luego se demostró que calcular las medias de los embeddings contextualizados generaba mejores resultados.
 
 ### Ajustando(fine-tuning) BERT
+
+BERT se puede ajustar para realizar una retaila de tareas, cambiando muy poco para cada una de ellas.
+
+Para tareas de clasificación, como analisis del sentimiento, todos los tokens de salida se ignoran excepto el primero, el cual corresponde al token de la clase, para luego reemplazar la cabeza de clasificacion NSP por una nueva. Luego puedes ajustar el modelo utilizando cross entropy, con un LR más bajo para las capas inferiores o congelandolas por completo las primeras iteraciones del entrenamiento para entrenar únicamente la cabeza clasificadora. Utilizando el mismo método se pueden abordar otras tareas de clasificación, como por ejemplo clasificar oraciones gramaticamente correctas con el dataset CoLA, por ejemplo.
+
+Para clasificación de tokens, la cabeza de clasificación se aplica a cada token. Este modelo puede ser ajustado para "named entity recognition" (NER), donde el modelo etiqueta partes del textro que corresponden a nombres, fechas, lugares, organizaciones u otras entidades, lo cual puede aplicarse en terreno legal, financiero o medico. El mismo método puede utilizarse para otras tareas de clasificación de tokens, como etiquetar errores gramaticales, análisis del sentimiento a nivel de tokens, análisis sintáctico o encontrar preguntas, citas, saludos, ...
+
+BERT también se puede utilizar para clasificar pares de secuencias, funcionando exactamente como clasificación de secuencias, pero en este caso con un par, en vez de una. Por ejemplo, esto puede utilizarse para "natural language inference" (NLI), donde el modelo debe determinar si la frase A conlleva la B, la contradice o ninguna de las dos. También puede utilizarse para detetcar si dos frases tienen el mismo significado, se estan parafraseando o si la respuesta a la pregunta A está presente en la frase B.
+
+Para preguntas de respuesta múltiple se llama a BERT por cada respuesta posible, poniendo la pregunta en el segmento 0 y la posible respuesta en el 1. Para cada respuesta la el token de salida con la clase es pasado por una capa lineal con una sola unidad, produciendo una puntuación. Una vez se han procesado todas las respuestas se convierten en probabilidades utilizando la capa softmax. Se puede utilizar cross entropy para ajustar el modelo.
+
+También es hábil en "extractive question answering"; se le pregunta al modelo (segmento 0) sobre un texto llamado "contexto"  (segmento 1) y BERT tiene que descubrir donde está la respuesta en el contexto. Para esto se puede añadir una capa lineal con dos unidades encima de BERT para generar uns puntuaciones por token: una puntuación de inicio y otra de final. Durante el ajuste se pueden tratar como logits para dos clasificadores binarios, el primero clasifica si es el inicio y el otro si es el final de la respuesta. Por supuesto, la mayoría no será ninguno y puede que el mismo sea el inicio y el final si la respuesta es un único token. En tiempo de inferencia se selecciona el par de indices $i$ y $j$ que maximizan la suma del token de inicio $i$ y de final $j$, sabiendo que $i \leq j$ y $j - i + 1 \leq \text{ len respuesta }$.
+
+Los autores también demostraron que BERT podia ser ajustado para medir "semantic textual similarity" (STS). En el conjunto STS-B se le da al modelo dos oroaciones y saca una puntuació que indica como de similares son semánticamente. Como esto fuerza a BERT a correr en $O(N^2)$ es preferible utilizar SBERT (Sentente-BERT), el cual es una variante de BERT que se ajusto para producir mejores embeddings de oraciones. Se empieza generando el embedding para después medir la similitud con la medición de la similitud por coseno ($[-1,1]$ dependiendo de lo diferentes/iguales que sean). 
+
+Por otro lado, el embedding de oraciones puede ser muy útil en otras aplicaciones:
+
+*Agrupación de texto*  
+    Pueden procesarse un gran número de domcumentos con SBERT para obtener los embeddings y aplicar un algoritmo de agrupación como k-means o HDBSCAN para agrupar los documentos basándote en la similitud semántica de estos  
+*Búsqueda semántica*  
+    Puedes ayudar al usuario a encontrar documentos basados en el significado de la query. Se codifican los documentos utilizando SBERT y se guardan los embeddings para depués comparar el codificado de la query con los de los documentos.  
+*Reordenación de resultados de búsqueda*  
+    Pueden reordenarse los resultados de una búsqueda basandote en la similitud semántica con la query  
+
+### Otros modelos de solo codificación
+
+#### RoBERTA - Facebook AI (125-355M parámetros)
+
+Similar a BERT pero con mejor desempeño en general, en gran parte por que su preentrenamiento fue más largo y sobre un dataset mayor. Se utilizó MLM pero no NSP. Es importante destacar que se utilizó "dynamic masking", es decir, los tokens se enmascararon durante el entrenamiento, con lo que el mismo extracto de texto se enmascara de manera diferente en diferentes épocas. Esto consigue que el modelo tenga más diversidad en la información, reduzca el overfitting y tenga una mejor generalización
+
+#### DistilBERT - Hugging Face (66M parámetros)
+
+Un modelo más pequeño (40%) y más rápido (60%) que consigue llegar al 97% de desempeño de BERT en la mayoría de tareas, haciéndolo una buena opción para entornos con bajos recursos, aplicaciones que necesitan poca latencia o un ajustado rápido.
+
+Como su nombre indica, el modelo fue entrenado con una técnica llamada "model distillation", propuesta en un paper de 2015 [ https://homl.info/distillation ]. Esta es básicamente entrenar un pequeño modelo "estudiante" con las probabilidades estimadas de un modelo "profesor" como etiquetas. Estos son "soft targets", más alla de los vectores one-hot usuales: hace que los entrenamientos sean mucho más rápido y la información más eficiente, ya que consigue que el modelo estudiante aprenda directamente de la distribución correcta, en vez de tener que aprenderla durante entrenamiento.
+
+Es importante saber que las probabilidades estimadas para el alumno y el profesor se suavizan durante entrenamiento dividendo los logits finales por una temperatura mayor a 1 (normalmente 2). Esto dota al estudiante con señales más complejas que cubren todas las posibles opciones, en vez de centrarse en la respuesta correcta. El autor bautizó este concepto como "dark knowledge". Si la frase fuese "Hace sol y me encuentro [mask]" las probabilidades podrian ser un 72, 27 y 0.5 para "genial", "bien" y "mal", con lo que para el estudiante serían un 60, 36 y 5% respectivamente. Siempre es útil que el modelo sepa que "mal" es una opción plausible aun que sea rara.
+
+La périda en el entrenamiento tiene dos componentes más; la pérdida estándar MLM y la cosine embedding loss, que minimiza la similitud de coseno entre los estados finales del alumno y el profesor, permitiendo que el estudiante "piense" como el profesor en vez de hacer las mismas predicciones, además de llegar más rapido a la convergencia y mejorar el desempeño.
+
+#### ALBERT - Google Research (12-235M parámetros)
+
+Todas las capas de encoder de este modelo comparten pesos, haciendo que este sea mucho más pequeño que BERT, pero no más rápido. Es un buen modelo para cuando la mémoria escasea, en particular cuando estás entrenándolo en una GPU con poca VRAM.
+
+También se introdujo el "factorized embeddings" para reducir el tamaño de la capa de incrustación: en BERT-large el tamaño de vocabulario era aproximadamente de 30000 y el tamaño del embedding de 1024, lo que significa que la matriz de embedding tenia más de 30 millones de parámetros. ALBERT reemplaza esta matriz con el producto de dos más pequeñas. En la practica se puede implementar reduciendo el tamaño de embedding - ALBERT utiliza 128 - y añadiendo una capa lineal despues de la de embedding para proyectarlos a un espacio dimensional mayor, como 1024 dimensiones para ALBERT-large. 
+
+Por otro lado, también se cambió NSP por "sentence order prediction" (SOP) que, dadas dos oraciones consecutivas, el objetivo es predecir cual va primero. Es una tarea más dificil que NSP pero conllevó una mejora de la incrustación de las secuencias
+
+#### ELECTRA - Google Research (14-335M parámetros)
+
+Este modelo introdujo una nueva técnica de preentrenamiento, "replaced token detection" (RTD): se entrenaron dos modelos juntos - un pequeño modelo generador y un modelo más grande que discriminaba. El generador solo se utiliza durante el entrenamiento, mientras que el discriminador es el que se acabará utilizando. El primero se entrena utilizanodo MLM con enmascarado dinámico; para cada token enmascarado un token de reemplazo se escoge de las mejores predicciones. El texto resultado se entrega directamente al discriminador, que tiene la tarea de predecir que token es original y cual no.
+
+Esta técnica es más eficiente con las muestras que MLM ya que el discriminador aprende sobre más tokens por ejemplo, convergiendo más rápido y, generalmente, con un desempeño igual a modelos como BERT-large. Dicho esto, puede que los beneficios no compensen la complejidad adicional en el preentrenamiento.
+
+#### DeBERTa - Microsoft (139M-1.5B parámetros)
+
+Este es un modelo relativamente grande, que mejoró los modelos SotA en muchas tareas de entendimiento del lenguaje natural. Elimina la capa de embedding posicional y utiliza "relative positional embedding" cuando calcula la puntuación de antención dentro de cada capa de atención multicabeza: cuando se decide cuanto debería atender la i-query al j-token, el modelo tiene acceso a un embedding aprendido para la posición relativa i-j. DeBERTa no fue el primer modelo en hacerlo, pero introdujo una variante de esta técnica llamada "disentangled attention", que le daba más flecibilidad al modelo en como podía combinar información semántica y posicional.
+
+## Transfomers de solo decodificación
