@@ -171,4 +171,20 @@ Esta técnica es más eficiente con las muestras que MLM ya que el discriminador
 
 Este es un modelo relativamente grande, que mejoró los modelos SotA en muchas tareas de entendimiento del lenguaje natural. Elimina la capa de embedding posicional y utiliza "relative positional embedding" cuando calcula la puntuación de antención dentro de cada capa de atención multicabeza: cuando se decide cuanto debería atender la i-query al j-token, el modelo tiene acceso a un embedding aprendido para la posición relativa i-j. DeBERTa no fue el primer modelo en hacerlo, pero introdujo una variante de esta técnica llamada "disentangled attention", que le daba más flecibilidad al modelo en como podía combinar información semántica y posicional.
 
+### Resumen: la tarea general de un encoder-only
+
+La tarea general de un transformer de solo codificación es aprender una representación contextual bidireccional de una secuencia de entrada y utilizarla para predecir algo sobre ella, sin generar texto nuevo. Formalmente, el encoder es una función $E: (x_1, \dots, x_n) \rightarrow (h_1, \dots, h_n)$ con $h_i \in \mathbb{R}^d$, donde cada $h_i$ depende de todos los tokens, tanto a izquierda como a derecha, ya que la atención no está enmascarada. Sobre estas representaciones se añade una cabeza (una capa lineal o un MLP pequeño) que determina la tarea concreta:
+
+| Nivel de salida | Qué utiliza la cabeza | Tareas típicas |
+|---|---|---|
+| Secuencia → etiqueta | $h_{[CLS]}$ o pooling de todos los $h_i$ | Análisis del sentimiento, clasificación de temas, NLI, regresión (STS) |
+| Token → etiqueta | Cada $h_i$ por separado | NER, POS tagging |
+| Span dentro de la secuencia | Puntuación de inicio y de final por token | "Extractive question answering" |
+| Secuencia → vector | Pooling de los $h_i$ (normalizado) | Embeddings de oraciones, búsqueda semántica, agrupación, reordenación |
+| Token → vocabulario | $h_i$ proyectado a $\vert V \vert$ | MLM (objetivo de preentrenamiento) |
+
+Todas son tareas de comprensión del lenguaje natural (NLU): la entrada está completa desde el principio y la salida es una función de ella (una etiqueta, una posición o un vector), por lo que la bidireccionalidad es una ventaja. Un decoder, en cambio, no puede ver los tokens posteriores. El entrenamiento sigue dos fases: un preentrenamiento autosupervisado (normalmente MLM, o variantes como RTD o SOP) y un ajuste fino donde se sustituye la cabeza por la de la tarea.
+
+Como el encoder solo asume una secuencia de vectores, no necesariamente de palabras, la misma arquitectura se generaliza a otros dominios: visión (ViT, con parches de imagen), audio (wav2vec 2.0, HuBERT), proteínas, genómica o series temporales. Sus limitaciones son que no generan texto de forma natural (para eso están los decoders o los encoder-decoder), que el contexto está limitado por el coste cuadrático de la atención y que cada tarea necesita su propia cabeza.
+
 ## Transfomers de solo decodificación
