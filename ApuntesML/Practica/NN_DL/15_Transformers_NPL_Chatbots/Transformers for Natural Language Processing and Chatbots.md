@@ -188,3 +188,131 @@ Todas son tareas de comprensión del lenguaje natural (NLU): la entrada está co
 Como el encoder solo asume una secuencia de vectores, no necesariamente de palabras, la misma arquitectura se generaliza a otros dominios: visión (ViT, con parches de imagen), audio (wav2vec 2.0, HuBERT), proteínas, genómica o series temporales. Sus limitaciones son que no generan texto de forma natural (para eso están los decoders o los encoder-decoder), que el contexto está limitado por el coste cuadrático de la atención y que cada tarea necesita su propia cabeza.
 
 ## Transfomers de solo decodificación
+
+Mientras el equipo de investigación de Google trabajaba en el primer modelo de solo codificación, investigadores de OpenAI cogian otra ruta: construir el primer modelo de solo decodificación; GPT, el cual allanaria el terreno para los chatbots más utilizados como ChatGPT o Claude.
+
+El modelo GPT-1, que significa "Generative pre-training", se preentreno en un conjunto de 7000 libros para predecir el siguiente token, para poder generar un token a la vez. 
+
+Estos modelos son buenos para generar texto, en tareas como autocompletado, generación de codigo, respuesta de preguntas, razonamiento lógico y mátematico y como chatbots. También pueden utilizarse para resumir o traducir, aunque los modelos encoder-decoder siguen siendo opciones populares para este tipo de tareas teniendo, en algunos casos, mejor entendimiento de la fuente, todo gracias al encoder.
+
+### Arquitectura GPT-1 y preentrenamiento generativo
+
+Durante el preentrenamiento se le daban lotes de 64 secuencias muestreadas de manera aleatoria del libro y era entrenado para predecir el siguiente token de cada entrada. Cada secuencia eran exacta,emte 512 tokens de largo, con lo que no hacía falta el padding, ni si quiere SoS o EoS. Es un proceso de preentrenamiento más sencillo que el de BERT y provee la misma información por cada posición de token, mientras que BERT ve menos información para las últimas posiciones que las primeras debido al padding.
+
+La arquitectura de GPT-1 tiene dos diferencias importantes comparada al decoder del Transformer original:
+
+- No hay bloque de "cross-attention" ya que no hay output de encoder al que hacer caso: cada bloque del decoder solo contiene capas de atención multicabeca enmascarada y dos capas lineales
+
+- Es mucho más grande: tiene 12 capas de decoder, en vez de las 6 del original, el tamaño de embedding es 768 (de 512 del original) y tiene 12 cabezas de atención. Esto llega a un total de 117M de parámetros
+
+La primera versión de este modelo, aunque ahora sea la norma, era muy bueno generando texto, pero los autores también lo ajustaron para varias tareas como: implicación textual (entailment; implicación textual o consecuencia lógica entre textos), similitud semántica, comprensión lectora o razonamiento de sentido común, y en cada una mejoró el rendimiento de los modelos SotA. Pra cada tarea solo se hicieron cambios menores en la arquitectura:
+
+- Para tareas de clasificación: se añadia una cabeza de clasificación encima de la del embedding del token de salida.
+
+- Para implicación textual y otras tareas de clasifiación con tos secuencias de entrada: el modelo recibia ambas secuencias separadas por un token delimitador y se añadia una cabeza de clasificación encima de la del embedding del token de salida 
+
+- Para similitud semántica: ya que el orden de las dos oraciones no importaba, se llamaba al modelo dos veces, una con S1$S2 y otra al revez. El embedding del token de salida en ambos casos se sumaban elemento por elemento y el resultado se le daba a una cabeza de regresión
+
+- Para preguntas de respuesta múltiple: el modelo se llamaba una vez por cada respuesta posible, con el contexto y la posible respuesta como entrada y separados por un token $, para después pasar elembedding del token de salida por una capa lineal para obtener una puntuación.
+
+> En todos los casos se añadian tokens SoS y EoS
+
+### GPT-2 y aprendizaje zero-shot
+
+Meses despues de GPT-1 se publicó el paper de GPT-2 [ https://homl.info/gpt2 ] que proponia una arquitectura similar pero más grande que la anterior. Tenía 4 variantes en cuanto a tamaño, la más grande tenía 48 capas decoder, 20 cabezas de atención y un tmaño de embedding de 1600, con una ventana de contexto de 1024 tokens, con un total de 1.5B parámetros.Para un modelo tan largo de necesitó un dataset enorme, con lo que montaron WebText, compuesto de 8M de páaginas enlazadas de Reddit.
+
+Lo más importante es que GPT-2 rendia increiblemente bien en muchas tareas sin si quiera ajuste, conocido como "zero-shot learning" (ZSL), por ejemplo:
+
+- Para responder preguntas, podías agregar "A:" a la pregunta y darle el prompt a GPT-2, que la respondería.
+
+- Para resmer, podías añadir "TL;DR" al documento y el modelo generaba un resumen relativamente bueno
+
+- Para traducción, podrías crear un prompt con varios ejemplos para guiar al modelo, como: “Bonjour papa = Hello dad” o  “Le chien dort = The dog is sleeping” y luego añadir el texto a traducir
+
+En resumen, en el paper se llegaba a ver que ZSL parecía incrementar el desempeño con el tamaño del modelo.
+
+### GPT-3 aprendizaje en contexto, aprendizaje One-shot y aprendizaje Few-shot
+
+Siguiendo la filosofía de cuanto más grande mejor crearon GPT-3 en 2020 [ https://homl.info/gpt3 ], con aproximadamente 40B parámetros y entrenado en un dataset de 570 GB.
+
+En efecto, el modelo era mucho mejor en todos los sentidos que GPT-2, en particlar en tareas zero-shot, pero lo más importante es que demostraron que este nuevo modelo era increiblemente bueno generalizando en base a pocos ejemplos, FSL o OSL, dependiendo si hay pocos o solo un ejemplo. Para lidiar con tareas OSL y FSL los investigadores agregaban algun ejemplo en el prompt, conocido como "in-context learning" (ICL). 
+
+## Convertir un LLM en un chatbot
+
+### De un modelo base a un chatbot con memoria (Mistral-7B)
+
+En el notebook se carga `mistralai/Mistral-7B-v0.3` desde Hugging Face (con `AutoTokenizer` y `AutoModelForCausalLM`, `device_map="auto"` para repartir los pesos entre GPU y CPU, y `dtype="auto"` para usar la precisión original del checkpoint). El acceso exige iniciar sesión con un token de HF (`login`), que se lee de un archivo `.env` para no dejarlo escrito en el notebook. Para generar texto se define una función auxiliar `generate()` que tokeniza el prompt, llama a `model.generate()` y decodifica la salida.
+
+Es un **modelo base**: solo ha sido preentrenado para predecir el siguiente token, no para seguir instrucciones. Si se le da directamente "Me gustaría visitar París, haz una lista de los sitios que debería visitar.", no lo trata como una orden sino como el comienzo de un texto que hay que continuar: entiende el español (de hecho traduce la frase al inglés), pero la repite en bucle en vez de responder. Una variante *instruct* sí está ajustada para esto, pero aquí se muestra que con el modelo base también se puede conseguir con ingeniería de prompts.
+
+El truco es construir un prompt que haga que la respuesta más probable sea la de un asistente útil:
+
+1. Una **introducción** que presenta al bot ("Lamine es un chatbot increíble. Sabe de todo y es muy útil respondiendo preguntas").
+2. **Etiquetas de rol** para marcar quién habla: `Yo: <pregunta>` y `Lamine:`. Al terminar el prompt en `Lamine:`, lo natural para el modelo es escribir la respuesta de Lamine.
+
+Para que la conversación continúe (por ejemplo, que "el equipo de fútbol de la ciudad" se entienda como el de París), el modelo no tiene memoria entre llamadas: hay que reenviarle **todo el historial** en cada turno. La clase `LamineBot` lo gestiona así:
+
+- Guarda en `self.context` la introducción más todos los turnos anteriores.
+- En cada `chat(prompt)` añade `\nYo: <prompt>\nLamine:` y genera.
+- Como no se sabe cuánto va a durar la respuesta, genera en **tandas de 100 tokens** y repite sobre el texto ya extendido hasta que se cumple una condición de parada: el modelo empieza a escribir un nuevo `\nYo:` (inventa el turno del usuario), no genera nada nuevo (probablemente EOS) o se supera `max_answer_length`.
+- Recorta la respuesta en el primer `\nYo:`, la añade al historial y la devuelve.
+
+Limitaciones que se observan. El contexto crece con cada turno, así que está limitado por la ventana de contexto y el coste aumenta. Además, el modelo sigue la premisa del usuario sin comprobarla: en el ejemplo de Ferran Torres elabora la historia con total seguridad, sin ninguna fuente que la respalde, lo que es un caso típico de **alucinación**. Esto motiva las técnicas de la siguiente sección, en especial RAG.
+
+### Prompt engineering (ingeniería de prompts)
+
+La respuesta de un LLM cambia mucho según cómo se formule la pregunta, así que merece la pena experimentar con distintos prompts. Algunas opciones básicas son cambiar palabras, añadir contexto, dar ejemplos (few-shot), pedirle que imite un personaje ("eres un experto inmobiliario amable"), especificar el formato y el estilo de la salida o listar errores que debe evitar. Incluso se puede automatizar: probar muchas variantes y evaluarlas, o usar técnicas de optimización automática de prompts (APO), como el *prompt tuning*, que antepone a la entrada unos pocos embeddings aprendidos.
+
+Técnicas más elaboradas:
+
+- **Prompt chaining**: dividir una tarea compleja en subtareas y lanzar un prompt por cada una, de modo que la salida de uno alimenta al siguiente. Por ejemplo, para una lección sobre dinámica de fluidos: primero el esquema, luego revisarlo y completarlo, y por último generar la lección a partir del esquema final. Mejora bastante la calidad y se puede automatizar.
+- **Chain-of-thought (CoT)**: pedir al modelo que razone paso a paso ("procede paso a paso") o darle ejemplos de respuestas con ese formato, en vez de saltar a la primera respuesta. Aumenta la fiabilidad, sobre todo en razonamiento. Si se repite varias veces y se elige la respuesta más frecuente, se llama **CoT con autoconsistencia (CoT-SC)**.
+- **Tree-of-thoughts (ToT)**: extiende CoT con varias ramas de razonamiento. En cada paso el modelo genera varias opciones ("pensamientos"), ya sea llamándolo varias veces con muestreo aleatorio o pidiéndole directamente varias. Después evalúa cada opción, explora la más prometedora y, si llega a un callejón sin salida, retrocede (*backtracking*). Da muy buenos resultados en razonamiento, pero es caro porque hay que ejecutar el LLM muchas veces.
+- **Multi-agent debate (MAD)**: varios LLM debaten entre sí. También es costoso.
+- **Autocrítica y refinado (self-refine)**: alternativa más barata en la que un único LLM critica su propia respuesta y la mejora.
+- **Retrieval augmented generation (RAG)**: los LLM tienden a inventar afirmaciones convincentes pero falsas, llamadas **alucinaciones**. Para evitarlas, la técnica más importante es añadir al prompt, sobre la marcha, contexto relevante. Por ejemplo, un chatbot médico al que preguntan por la aspirina recupera la información del fármaco de una fuente fiable (una base de datos médica o un grafo de conocimiento) y la incluye en el prompt. Mejora mucho la fiabilidad y reduce las alucinaciones.
+- **Un LLM que genera prompts para otro modelo**: por ejemplo, ante "una foto de un gatito mono", un LLM puede mejorar el prompt ("gatito esponjoso adorable sentado en una taza de té, colores pastel, fondo con bokeh, mucho detalle") antes de dárselo a un transformer generador de imágenes.
+
+### Ajustando un modelo para conversar y seguir instrucciones utilizando SFT y RLHF
+
+Una vez que se realiza el paso más costoso, el del preentrenamiento sobre una cantidad enorme de texto, el modelo base puede ser ajustado para realizar una gran variedad de tareas, como tener un tono más amable, ser más conversacional (**modelo conversacional**) o incluso seguir instrucciones (**modelo instructivo**). Normalmente, un *chatbot*  se ajusta para ambas tareas, como por ejemplo Mistral-7B-Instruct, el cual fue ajustado para ser conversacional y seguir instrucciones.
+
+![Pipeline chatbots](img/pipeline_chatbots.png)
+
+Para realizar el ajuste de un modelo base a un chatbot, el proceso se realiza, normalmente, en dos pasos diferenciados:
+
+1. *Supervised Fine-Tuning (SFT)*: el modelo es ajustado en un dataset curado que contiene conversaciones, pares de preguntas/respuestas, ejemplos de generación de código, problemas de matemáticas ... El proceso del entrenamiento es aprendizaje supervisado utilizando predicción del siguiente token. Es normal el calcular la pérdida solo en los tokens de respuesta (*loss masking*), ya que ayuda al modelo a centrarse en mejorar las respuestas en vez de imitar los prompts del usuario
+
+2. Ajuste con feedback humano: evaluadores humanos califican las respuestas del modelo para ajustar el modelo para que genere respuestas mejores. Normalmente se hace con *Reinforcement learning from human feedback RLHF* o *Direct Preference Optimization (DPO)*.
+
+Este planteamiento lo introdujo OpenAI en 2022 con el lanzamiento de InstructGPT [ https://homl.info/instructgpt ], un modelo basado en GPT-3 y ajustado con SLF + RLHF.
+
+RLHF es una tecnica basada en RL, *proximal policy optimization (PPO)* que entrena un sistema de recompensas para predecir las preferencias humanas y luego ajusta el LLM utilizando este sistema para favorecer las respuestas que sean calificadas más altas.
+
+### Direct Preference Optimization (DPO)
+
+DPO [https://homl.info/dpo ] se propuso en 2023 y a veces funciona igual d ebien que RLHF o incluso mejor, siendo un método más simple, estable y eficiente.
+
+Este método funciona con un conjunto de preferencias humanas. Cada muestra del dataset tiene tres elementos: un prompt y dos respuestas posibles, una de ellas la que prefieren los evaluadores humanos, con el objetivo de hacer que el modelo opte por generar esta respuesta sin desviarse mucho del modelo de referencia. Esto es un ejemplo de aprendizaje por contraste, donde un modelo aprende comparando ejemplos positivos y negativos. De esta manera podemos minimizar la pérdida siguiente: 
+
+$$
+\large
+\begin{aligned}
+J(\boldsymbol{\theta}) &= -\log \sigma\left[\beta\left(\delta(\mathbf{y}_\mathrm{c}) - \delta(\mathbf{y}_\mathrm{r})\right)\right] \\
+\text{con } \delta(\mathbf{y}) &= \log p_{\boldsymbol{\theta}}(\mathbf{y} \mid \mathbf{x}) - \log p_{\mathrm{ref}}(\mathbf{y} \mid \mathbf{x})
+\end{aligned}
+$$
+
+En esta ecuación:
+
+- $J(\boldsymbol{\theta})$ es la pérdida de DPO para una instancia $(x,y_c,y_r)$ dados los parametros del modelo actual $\theta$ y el modelo de referencia
+
+- $x$ es el prompt, $y_c$ es la respuesta elegida y $y_r$ es la respuesta rechazada
+
+- $\sigma(\dot)$ es la función sigmoide $\large \sigma(x) = \frac{1}{1 + exp(-x)}$
+
+- $\log p_{\boldsymbol{\theta}}(\mathbf{y} \mid \mathbf{x})$ es la probabilidad estimada para las respuestas $y$ dado el prompt $x$
+
+- $\log p_{\mathrm{ref}}(\mathbf{y} \mid \mathbf{x})$ es la probabilidad estimada del modelo de referencia para la respuesta $y$ dada $x$
+
+- $\beta$ es un hiperparametro como la temperatura que controla como de inclinada es la función sigmoide, el cual impacta en la medida en la que la función de pérdida se ajusta al modelo de refenencia en comparación con las preferencias humanas ($\beta$ alto y bajo respectivamente). Normalmente el valor de este parámetro esta entre $[0.1, 0.5]$
