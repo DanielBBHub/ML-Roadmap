@@ -36,3 +36,5 @@ ApuntesML/Practica/NN_DL/14_NLP_RNN_Atention/ModelUtl/__init__.py
 **/ModelUtl
 ApuntesML/Practica/NN_DL/15_Transformers_NPL_Chatbots/.env
 ApuntesML/Practica/NN_DL/15_Transformers_NPL_Chatbots/.ipynb_checkpoints/mistral-collab-checkpoint.ipynb
+my_gpt2_sft_alpaca
+my_gpt2_sft_alpaca_dpo_hh_rlhf

@@ -316,3 +316,107 @@ En esta ecuación:
 - $\log p_{\mathrm{ref}}(\mathbf{y} \mid \mathbf{x})$ es la probabilidad estimada del modelo de referencia para la respuesta $y$ dada $x$
 
 - $\beta$ es un hiperparametro como la temperatura que controla como de inclinada es la función sigmoide, el cual impacta en la medida en la que la función de pérdida se ajusta al modelo de refenencia en comparación con las preferencias humanas ($\beta$ alto y bajo respectivamente). Normalmente el valor de este parámetro esta entre $[0.1, 0.5]$
+
+### Ajustando un modelo preentrenado
+
+Las secciones anteriores describen el proceso en abstracto (modelo base → SFT → DPO). Aquí se aterriza con la librería **TRL** (*Transformer Reinforcement Learning*) de Hugging Face, que encapsula cada fase en un *trainer* (`SFTTrainer`, `DPOTrainer`) que se encarga de la tokenización, el enmascarado de la pérdida, el bucle de entrenamiento y los checkpoints. El punto de partida es GPT-2 (124M), un modelo base que solo sabe continuar texto.
+
+### Fase 1: SFT con un dataset de instrucciones
+
+**El dataset.** Se usa Alpaca (52 002 ejemplos), cuyos campos son una instrucción, una entrada opcional y la respuesta deseada, más un campo `text` ya formateado con una plantilla ("Below is an instruction... ### Instruction: ... ### Response: ..."). Cada ejemplo es de **un solo turno**: enseña a seguir una instrucción, pero no a mantener una conversación larga.
+
+**Plantilla de roles.** Como el modelo solo aprende a imitar el formato que ve, el formato del texto de entrenamiento *es* la interfaz del chatbot. Por eso se reescribe cada ejemplo con etiquetas de rol (`Human:` / `Assistant:`), el mismo estilo que usa el dataset de preferencias de Anthropic. Así el modelo aprende a producir la etiqueta `Assistant:` y a escribir la respuesta a continuación, y las dos fases posteriores comparten formato. Es la misma idea que el `Yo:` / `Lamine:` del prompt con Mistral, pero ahora el patrón se **aprende en los pesos** en vez de darse en el contexto. Lo ideal sería un dataset multiturno, para que además aprenda a sostener diálogos largos.
+
+**Qué hace el `SFTTrainer` por debajo.** Antes de entrenar, el trainer prepara el dataset en varios pasos:
+
+1. Añade el token **EOS** al final de cada ejemplo, para que el modelo aprenda *cuándo parar*. Sin él, generaría sin fin, como el modelo base de Mistral.
+2. **Tokeniza** el texto.
+3. Construye las **etiquetas** (*labels*) para la pérdida de predicción del siguiente token. En SFT la pérdida se puede enmascarar (con `-100`) en los tokens del prompt, para que el modelo mejore sus respuestas en lugar de imitar al usuario (*loss masking*).
+4. **Trunca** a `max_length`. GPT-2 tiene una ventana de 1024 tokens, así que las secuencias más largas se recortan Aquí se usa 512 para ahorrar memoria, a costa de perder el final de los ejemplos largos (y su EOS).
+5. Descarta los ejemplos cuyas etiquetas quedan totalmente enmascaradas, porque no aportan señal.
+
+**Hiperparámetros.** El ajuste es un entrenamiento normal con un `learning_rate` pequeño (5e-5) y pocas épocas (1), para modificar el comportamiento del modelo sin destruir lo aprendido en el preentrenamiento (*catastrophic forgetting*).
+
+**Checkpoints.** Un checkpoint no guarda solo los pesos: incluye también el estado del optimizador (AdamW mantiene dos tensores adicionales por parámetro), por lo que pesa varias veces más que el modelo (~1,5 GB para GPT-2). Con `save_steps` pequeño y sin límite, el disco se llena enseguida. Conviene guardar con menos frecuencia (`save_steps` alto) y limitar con `save_total_limit`. Al final se guarda el modelo con `save_pretrained`.
+
+### Fase 2: alineamiento con DPO
+
+**El dataset de preferencias.** Se usa `Anthropic/hh-rlhf`, orientado a que las respuestas sean útiles y *inofensivas*. Cada ejemplo contiene el mismo diálogo con dos finales: `chosen` (la respuesta que prefirieron los evaluadores) y `rejected`. En este conjunto el prompt está dentro de ambas respuestas; en otros viene en un campo `prompt` aparte. TRL admite los dos formatos.
+
+**Modelo de partida y modelo de referencia.** El `DPOTrainer` no parte del GPT-2 original, sino del **modelo ya ajustado con SFT**, que es el que sabe seguir el formato. Ese mismo modelo se usa como **modelo de referencia** congelado ($p_{\mathrm{ref}}$ de la ecuación de DPO): el término $\delta(y)$ mide cuánto se ha desplazado el modelo en entrenamiento respecto a él. Así, el modelo aprende a preferir las respuestas elegidas sobre las rechazadas sin alejarse demasiado de lo que aprendió en SFT.
+
+**Detalles prácticos.**
+- El `learning_rate` es aún menor (2e-5), porque el ajuste de preferencias es más delicado y debe ser un retoque.
+- GPT-2 no tiene *token de relleno* (`pad_token`), y hacen falta para agrupar secuencias de distinta longitud en un lote. El truco habitual es reutilizar el EOS como padding.
+- Por ser aprendizaje por contraste, cada paso procesa dos secuencias (elegida y rechazada) y calcula sus probabilidades con el modelo en entrenamiento y con el de referencia, por lo que es más costoso en memoria que SFT.
+
+### Resumen del pipeline
+
+| Fase | Datos | Objetivo | Resultado |
+|---|---|---|---|
+| Preentrenamiento (NTP) | Texto masivo sin etiquetas | Predecir el siguiente token | Modelo base |
+| SFT | Instrucción → respuesta (Alpaca) | Seguir instrucciones y usar roles | Modelo instructivo |
+| DPO | Pares elegida / rechazada (hh-rlhf) | Alinear con preferencias humanas | Chatbot |
+
+Con esto queda cubierto el ciclo completo: implementar un transformer desde cero, preentrenarlo con NTP (si se dispone de los recursos) y ajustarlo con SFT y DPO para convertirlo en un chatbot.
+
+### De un modelo a un sistema chatbot
+
+El último paso para construir un chatbot es desplegar el modelo dentro de un sistema completo, el cual incluye interfaz web, una app para el usuario final e incluso un endpoint de la API desde la cual consultar al modelo mediante un script. Además, para manejar peticiones más complejas y dar respuestas realmente útiles, los chatbots requieren de un sistema de herrameintas integradas. Para esto, se implementa un componente "orquestrador" el cual coordina varias herramientas para procesar el prompt del usuario y componer la respuesta del modelo. Algunas herramientas importantes son:
+
+- Calculadora
+
+Puede que el usuario pregunte cuanto es 525.6 * 315 / 3942, con lo que el orquestrador puede detectar una expresión matemática y en vez de enviarle el prompt directamente al modelo, este puede extraer la expresión, evaluarla con una herramienta de calculadora y añadir el resultado al prompt antes de que llege al modelo (“User: What’s 525.6 * 315 / 3942?\nSystem: Calculator result = 42.\nAssistant:”) con lo que el modelo solo tiene que generar un buen texto para la respuesta (“The result of 525.6 * 315 / 3942 is 42”)
+
+Por otro lado, se puede ajustar el modelo para que invoque herramientas (Assistant: The result of 525.6 * 315 / 3942 is [calculator_tool] 525.6 * 315 / 3942 [/calculator_tool]”) para que el orquestrador detecte esta invocacion y evalue la expresión.
+
+- Busqueda en la web
+
+El orquestrador puede descargar e inyectar el texto de la web a la que hace referencia una URL del prompt, si es muy larga puede enviarle el texto a un modelo para resumirlo o partirlo en cachos relevantes.
+
+De la misma manera que con la calculadora, también se puede ajustar un modelo para que invoque esta herramienta (What’s the
+population of the capital of Canada?”, the model may first output “[search_tool] What is the population of Ottawa? [/search_tool]”)
+
+- RAG (Retrieval Augmented Generation)
+
+La idea de la busqueda en la web puede generalizarse a todas las fuentes de información, incluyendo información privada, como bases de datos empresariales, documentos pdf, ... En este caso, también se puede ajustar un modelo para que invoque esta herramienta
+
+- Memória (contexto persistente)
+
+En esta herramienta se guardan hechos específicos del usuario y sus preferencias. Si la usuaria ha expresado que le gustaría que le llamen Alicia, el modelo puede invocar la herramienta de memória generando un comando ([memory_tool] User is named Alice [/memory_tool]”.) que el orquestrador detectará y procederá a guardar la información en una base de información. Cada vez que se abrá una sesión con dicho usuario, el orquestrador incrustará en el contexto la información guardada
+
+- Comportamiento agéntico
+
+El modelo puede ser ajustado para ser más autónomo y ejecutar una tarea de varios pasos con una planificación y herramientas, lo cual lo convierte en un "agente". Si el usuario pide al modelo realizar una "búsqueda profunda" sobre un tema en concreto, el modelo puede empezar preguntando al usuario cosas especificas y mapear una hoja de ruta a ejecutar paso por paso, incluyendo invocar busquedas, herramientas, analizar resultados, añadir pasos ...
+
+- Otras herramientas
+
+Cualquier funcionalidad que puedas imaginar puede formar parte del conjunto de herramientas del modelo
+    - Conversor de unidades o divisas
+    - Aplicación del tiempo
+    - Carga de archivos
+    - Interpretador de código
+    - Sistemas externos como Wlfram Alpha para graficos, matemáticas simbólicas, ...
+
+### MCP (Model Context Protocol)
+
+MCP [https://www.anthropic.com/news/model-context-protocol ]es un estándar abierto propuesto por Anthropic que especifica como debería comunicarse el sistema de IA con los servidores MCP para obtener acceso a las herramientas y recursos, como directorios, correo electronico, calendario, ...
+
+Es importante destacar que el MCP no especifica nada sobre el modelo, la responsabilidad de interactuar con él es del orquestrador, así como detectar cuando tiene que dar acceso a una herramienta o recurso. Se puede incluir instrucciones en el modelo que indiquen que puede generar un mensaje JSON como *{"tool": "weather", "location": "Paris"}* cuando necesite saber el tiempo en un sitio, con el objetivo de que el orquestrador lo detecte, envie una peticion MCP y devuelva al modelo una respuesta que adjuntar en la respuesta.
+
+### Librerias y herramientas
+
+Existen varias librerías de Python de código abierto para implementar un sistema de chatbot propio:
+
+- [**LangChain**](https://www.langchain.com/): librería para construir aplicaciones basadas en LLM encadenando componentes como plantillas de prompts, modelos, memoria y otras herramientas. Simplifica la orquestación de flujos de trabajo complejos.
+- [**LangGraph**](https://www.langchain.com/langgraph): construida sobre LangChain, está pensada específicamente para crear flujos de trabajo agénticos con estado y de larga duración.
+- [**Smolagents**](https://huggingface.co/docs/smolagents): librería de Hugging Face para construir sistemas agénticos. Es el sucesor independiente de la librería Transformers Agents.
+- [**Haystack**](https://haystack.deepset.ai/): permite construir sistemas que entienden preguntas complejas, recuperan la información relevante y dan respuestas precisas, normalmente mediante RAG.
+- [**LlamaIndex**](https://www.llamaindex.ai/): permite ingerir, indexar y consultar tus datos (PDF, bases de datos, APIs, etc.).
+
+También hay varias interfaces de usuario de código abierto para chatear con LLM en local:
+
+- [**LM Studio**](https://lmstudio.ai/): aplicación con interfaz gráfica para descargar y chatear fácilmente con varios modelos. Soporta historial de chat, formato de prompts y alguna función más.
+- [**Ollama**](https://ollama.com/): herramienta de línea de comandos sencilla para descargar varios LLM y chatear con ellos en local, en el propio terminal (p. ej. `ollama run mistral:7b`). También puede actuar como servidor de API, consultable desde otros sistemas (p. ej. LangChain), y la librería de Python [`ollama`](https://github.com/ollama/ollama-python) facilita esas consultas. Soporta además herramientas como una calculadora, búsqueda web, etc.
+- [**text-generation-webui (TGWUI)**](https://github.com/oobabooga/text-generation-webui): interfaz web para chatear con LLM locales; es una de las más completas y flexibles. Tiene un sistema de plug-ins (calculadora, cargador de documentos, buscador, etc.) y una API REST para integrarse con otros sistemas como LangChain.
+
